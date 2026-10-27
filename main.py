@@ -104,12 +104,16 @@ def main():
                     o.description = detail_fn(session, o)
                 except Exception:
                     pass
-            o.match, o.gaps, o.add_to_cv = ats.evaluate(o.description, skills, cv_text)
+            o.match, o.gaps, o.add_to_cv, o.n_req = ats.evaluate(o.description, skills, cv_text)
             if cfg["filters"].get("min_match") and o.match is not None and o.match < cfg["filters"]["min_match"]:
                 st["za niski match"] = st.get("za niski match", 0) + 1
                 continue
+            notes = []
+            if o.n_req < ats.MIN_REQUIREMENTS:
+                notes.append("Mało danych do ATS – sprawdź opis ręcznie")
             if looks_like_agency(o.company):
-                o.note = "Agencja? Ustal klienta końcowego, zanim wyślesz CV."
+                notes.append("Agencja? Ustal klienta końcowego, zanim wyślesz CV.")
+            o.note = ". ".join(notes)
             dd.add(o)
             new.append(o)
             st["nowe"] += 1
@@ -118,7 +122,7 @@ def main():
     if args.dry_run:
         for o in new:
             m = f"{o.match:.0%}" if o.match is not None else "–"
-            print(f"{m:>5}  {o.company} – {o.title} | {o.salary_text()} | luki: {', '.join(o.gaps) or '-'}")
+            print(f"{m:>5}  {o.company} – {o.title} | {o.salary_text()} | wym.: {o.n_req} | luki: {', '.join(o.gaps) or '-'}")
     else:
         import sheets
         sheets.append_offers(ws, new, today, last_row)

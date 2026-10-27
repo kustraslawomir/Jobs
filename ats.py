@@ -8,6 +8,8 @@ import re
 _PUNCT = re.compile(r"[\n\r\t ,.;:()/\\\-!?\"'\[\]{}•|*–—<>&+#’`]")
 _SPACES = re.compile(r"\s+")
 
+MIN_REQUIREMENTS = 3   # poniżej tej liczby rozpoznanych wymagań match nie jest wiarygodny
+
 SCORE = {"tak": 1.0, "częściowo": 0.5}
 
 
@@ -42,12 +44,12 @@ def load_skills(rows: list[list[str]]) -> list[Skill]:
 
 
 def evaluate(description: str, skills: list[Skill], cv_text: str):
-    """Zwraca (match 0-1 albo None, luki, masz-ale-nie-ma-w-CV)."""
+    """Zwraca (match 0-1 albo None, luki, masz-ale-nie-ma-w-CV, liczba rozpoznanych wymagań)."""
     d, cv = norm(description), norm(cv_text)
     found = [s for s in skills if s.found_in(d)]
     total = sum(s.weight for s in found)
-    if not total:
-        return None, [], []
+    if len(found) < MIN_REQUIREMENTS or not total:
+        return None, [], [], len(found)
     match = sum(s.weight * s.score for s in found) / total
     gaps = []
     for s in found:
@@ -55,4 +57,4 @@ def evaluate(description: str, skills: list[Skill], cv_text: str):
             suffix = {"Częściowo": " (częściowo)", "Do weryfikacji": " (?)"}.get(s.mam, "")
             gaps.append(s.keyword + suffix)
     add_to_cv = [s.keyword for s in found if s.score == 1 and not s.found_in(cv)]
-    return match, gaps, add_to_cv
+    return match, gaps, add_to_cv, len(found)

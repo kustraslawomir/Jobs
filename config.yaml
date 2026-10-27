@@ -4,7 +4,8 @@ filters:
   # oferta musi mieć w tytule którekolwiek z tych słów
   title_any: ["android", "kotlin", "mobile"]
   # odrzuć, jeśli tytuł zawiera którekolwiek z tych słów
-  title_exclude: ["junior", "intern", "staż", "trainee", "ios developer", "react native"]
+  title_exclude: ["junior", "intern", "staż", "trainee", "ios developer", "react native",
+                  "qa", "tester", "test engineer", "react", "electron", "angular", "frontend", "backend", "devops"]
   remote_only: true
   # minimalne widełki "do" w PLN / miesiąc (B2B lub UoP); 0 = nie filtruj
   # oferty bez widełek przechodzą (flaga "brak widełek" w kolumnie Widełki)

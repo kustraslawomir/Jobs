@@ -20,6 +20,8 @@ class Offer:
     match: float | None = None
     gaps: list[str] = field(default_factory=list)
     add_to_cv: list[str] = field(default_factory=list)
+    n_req: int = 0                 # ile wymagań ze słownika rozpoznano w ofercie
+    note: str = ""
 
     @property
     def key(self) -> str:

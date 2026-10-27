@@ -1,7 +1,7 @@
 """JustJoinIT – endpoint zweryfikowany 2026-10-27 w przeglądarce.
 
 GET https://justjoin.it/api/candidate-api/offers
-  ?keywords=android&keywordType=any&sortBy=publishedAt&orderBy=descending&perPage=50&from=0
+  ?keywords=android&keywordType=any&sortBy=publishedAt&orderBy=descending&perPage=10&from=0
 Odpowiedź: {"data": [...], "meta": {"totalItems", "next": {"cursor"}}}
 Filtra remote po stronie API nie ma (parametr ignorowany) – remote filtruje main.py.
 Ta sama oferta w kilku miastach to JEDEN rekord z listą "locations", więc tu nie ma duplikatów per miasto.
@@ -11,10 +11,10 @@ from models import Offer
 
 LIST_URL = "https://justjoin.it/api/candidate-api/offers"
 PARAMS = {"keywords": "android", "keywordType": "any", "sortBy": "publishedAt",
-          "orderBy": "descending", "perPage": 50}
+          "orderBy": "descending", "perPage": 10}
 HEADERS = {"Accept": "application/json", "Referer": "https://justjoin.it/job-offers?keyword=android"}
 OFFER_URL = "https://justjoin.it/job-offer/{slug}"
-MAX_PAGES = 8   # 8 x 50 = 400 najnowszych
+MAX_PAGES = 40  # API ignoruje perPage i daje max 10 na stronę: 40 x 10 = 400 najnowszych
 
 
 def _salary(item):
@@ -31,11 +31,14 @@ def _salary(item):
     if not cands:
         return None, None, "", "month", ""
     best = max(cands, key=score)
+    # from/to to zawsze kwoty miesięczne; oryginalna stawka siedzi w fromPerUnit/toPerUnit + unit
     unit = str(best.get("unit", "Month")).lower()
-    period = "hour" if "hour" in unit else "year" if "year" in unit else "month"
     typ = str(best.get("type", "")).lower()
     contract = {"b2b": "B2B", "permanent": "UoP", "mandate_contract": "UZ"}.get(typ, typ)
-    return best.get("from"), best.get("to"), str(best.get("currency", "")).upper(), period, contract
+    suffix = "/h" if "hour" in unit else "/rok" if "year" in unit else ""
+    if suffix and best.get("fromPerUnit") is not None and best.get("toPerUnit") is not None:
+        contract = f"{contract} ({best['fromPerUnit']:.0f}–{best['toPerUnit']:.0f}{suffix})".strip()
+    return best.get("from"), best.get("to"), str(best.get("currency", "")).upper(), "month", contract
 
 
 def _skills(item, key):
