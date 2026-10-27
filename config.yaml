@@ -12,8 +12,8 @@ filters:
                   "test automation", "automation", "product", "designer", "ux", "ui/ux", "owner", "manager",
                   "marketing", "sales"]
   remote_only: true
-  # dozwolone formy współpracy; oferta bez podanej formy przechodzi
-  contract_allow: ["B2B", "UoP"]
+  # dozwolone formy współpracy (kody z contracts.py); oferta bez podanej formy przechodzi
+  contract_allow: ["B2B", "UoP", "UZ", "UoD"]
   # minimalne widełki "do" w PLN / miesiąc (B2B lub UoP); 0 = nie filtruj
   # oferty bez widełek przechodzą (flaga "brak widełek" w kolumnie Widełki)
   min_salary_to_pln: 18000
@@ -24,6 +24,7 @@ sources:
   justjoinit: true
   nofluffjobs: true
   czyjesteldorado: true
+  bulldogjob: true
 
 dedup:
   # tytuły (0-100): pewny duplikat przy tej samej firmie / możliwy duplikat przy tej samej firmie / minimum dla porównania treści

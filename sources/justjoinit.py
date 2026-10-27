@@ -8,6 +8,7 @@ Ta sama oferta w kilku miastach to JEDEN rekord z listą "locations", więc tu n
 """
 import time
 from models import Offer, Pay
+from contracts import normalize
 from .htmlutil import job_posting_description as _job_posting_description, page_text
 
 LIST_URL = "https://justjoin.it/api/candidate-api/offers"
@@ -16,9 +17,6 @@ PARAMS = {"keywords": "android", "keywordType": "any", "sortBy": "publishedAt",
 HEADERS = {"Accept": "application/json", "Referer": "https://justjoin.it/job-offers?keyword=android"}
 OFFER_URL = "https://justjoin.it/job-offer/{slug}"
 MAX_PAGES = 40  # API ignoruje perPage i daje max 10 na stronę: 40 x 10 = 400 najnowszych
-
-
-_CONTRACTS = {"b2b": "B2B", "permanent": "UoP", "mandate_contract": "UZ"}
 
 
 def _pay(item):
@@ -36,7 +34,7 @@ def _pay(item):
 
     contracts, pays = [], []
     for typ, ets in by_type.items():
-        name = _CONTRACTS.get(typ, typ)
+        name = normalize(typ)
         if name and name not in contracts:
             contracts.append(name)
         cands = [e for e in ets if e.get("to") is not None]

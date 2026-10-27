@@ -11,6 +11,7 @@ Pełny opis: JSON-LD JobPosting ze strony oferty (details()).
 """
 import time
 from models import Offer, Pay
+from contracts import normalize
 from .htmlutil import array_after, job_posting_description, next_flight, page_text
 
 SEARCH_URL = "https://czyjesteldorado.pl/search"
@@ -19,7 +20,6 @@ QUERIES = ["android", "kotlin"]
 MAX_PAGES = 6
 PER_PAGE = 100
 MONTH_HOURS, MONTH_DAYS = 168, 21
-_CONTRACTS = {"b2b": "B2B", "employment_contract": "UoP", "mandate_contract": "UZ"}   # "other" = brak informacji
 
 
 def parse_search(page: str) -> list[dict]:
@@ -27,11 +27,11 @@ def parse_search(page: str) -> list[dict]:
 
 
 def _pay(item: dict) -> tuple[list[str], list[Pay]]:
-    contracts = [_CONTRACTS[c] for c in item.get("contractTypes") or [] if c in _CONTRACTS]
+    contracts = [c for c in map(normalize, item.get("contractTypes") or []) if c]
     pays = []
     for s in item.get("salary") or []:
-        name, lo, hi = _CONTRACTS.get(s.get("contractType")), s.get("min"), s.get("max")
-        if not name or (lo is None and hi is None):
+        name, lo, hi = normalize(s.get("contractType")), s.get("min"), s.get("max")
+        if lo is None and hi is None:
             continue
         period, hourly = s.get("period"), None
         mult = {"hour": MONTH_HOURS, "day": MONTH_DAYS}.get(period, 1)

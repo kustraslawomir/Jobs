@@ -1,5 +1,7 @@
 from dataclasses import dataclass, field
 
+from contracts import normalize as normalize_contract
+
 
 @dataclass
 class Pay:
@@ -53,6 +55,9 @@ class Offer:
     def __post_init__(self):
         if isinstance(self.contract, str):
             self.contract = [self.contract] if self.contract else []
+        self.contract = list(dict.fromkeys(c for c in map(normalize_contract, self.contract) if c))
+        for p in self.pay:
+            p.contract = normalize_contract(p.contract)
         if not self.pay and (self.salary_from is not None or self.salary_to is not None):
             hi = self.salary_to
             mult = {"hour": 168, "year": 1 / 12}.get(self.salary_period, 1)

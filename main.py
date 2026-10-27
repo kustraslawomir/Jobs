@@ -16,6 +16,7 @@ import yaml
 import ats
 from dedup import Deduper, SURE_BY_CONTENT, looks_like_agency, norm_description
 from sources import DETAILS, REGISTRY
+from contracts import is_known
 
 
 
@@ -112,7 +113,7 @@ def main():
     session = requests.Session()
     session.headers["User-Agent"] = "Mozilla/5.0 (job-tracker; personal use)"
 
-    new, stats, errors, events, runs = [], {}, [], [], []
+    new, stats, errors, events, runs, unknown = [], {}, [], [], [], set()
     today = dt.date.today().isoformat()
     for name, enabled in cfg["sources"].items():
         if not enabled or name not in REGISTRY:
@@ -125,6 +126,7 @@ def main():
             continue
         st = stats.setdefault(name, {"pobrane": len(offers), "nowe": 0})
         detail_fn = DETAILS.get(name)
+        unknown |= {(c, name) for o in offers for c in o.contract if not is_known(c)}
         for o in offers:
             if dd.has_key(o):
                 st["to samo ID"] = st.get("to samo ID", 0) + 1
@@ -176,6 +178,8 @@ def main():
 
     print("Statystyki:", stats)
     if args.dry_run:
+        for value, source in sorted(unknown):
+            print(f"nieznana forma: {value} ({source})")
         print("Źródła (tak wyglądałby zapis do zakładki):")
         print(f"  {'źródło':<14} {'data':<11} {'pobrane':>7} {'nowe':>5}  błąd")
         for name, day, fetched, n_new, error in runs:

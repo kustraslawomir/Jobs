@@ -5,12 +5,13 @@ API strony i mogą się zmienić. Gdy źródło zwróci 0 ofert albo wywali bł�
 otwórz portal w Chrome, DevTools -> Network -> Fetch/XHR, przefiltruj oferty po
 Androidzie i porównaj URL i JSON z tym, co jest w pliku źródła.
 """
-from . import czyjesteldorado, justjoinit, nofluffjobs
+from . import bulldogjob, czyjesteldorado, justjoinit, nofluffjobs
 
 REGISTRY = {
     "justjoinit": justjoinit.fetch,
     "nofluffjobs": nofluffjobs.fetch,
     "czyjesteldorado": czyjesteldorado.fetch,
+    "bulldogjob": bulldogjob.fetch,
 }
 
 # opcjonalne: pełny opis do ATS, wołany tylko dla ofert po filtrach (details(session, offer) -> str)
@@ -18,6 +19,7 @@ DETAILS = {
     "justjoinit": justjoinit.details,
     "nofluffjobs": nofluffjobs.details if nofluffjobs.FETCH_DETAILS else None,
     "czyjesteldorado": czyjesteldorado.details,
+    "bulldogjob": bulldogjob.details,
 }
 
 
