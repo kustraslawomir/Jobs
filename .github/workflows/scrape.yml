@@ -1,0 +1,40 @@
+name: Zbieranie ofert
+
+on:
+  schedule:
+    - cron: "13 5,13 * * 1-5"
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "Tryb"
+        type: choice
+        options: [run, init, dry-run]
+        default: run
+
+concurrency:
+  group: scrape
+  cancel-in-progress: false
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Run
+        env:
+          GOOGLE_SA_JSON: ${{ secrets.GOOGLE_SA_JSON }}
+          SHEET_ID: ${{ secrets.SHEET_ID }}
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          case "${{ inputs.mode || 'run' }}" in
+            init)    python main.py --init ;;
+            dry-run) python main.py --dry-run ;;
+            *)       python main.py ;;
+          esac
