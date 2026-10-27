@@ -4,7 +4,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from dedup import (Deduper, SURE_BY_CONTENT, SURE_BY_TITLE, company_forms, jaccard, norm_company,  # noqa: E402
+from dedup import (Deduper, SURE_BY_CONTENT, SURE_BY_TITLE, company_forms, containment, norm_company,  # noqa: E402
                    norm_description, norm_title, parse_salary_text, same_company, shingles)
 from fixtures import (ANDROID_DESC, BACKEND_DESC, BASE_DESC, IOS_DESC, SIMILAR_DESC, offer, words)  # noqa: E402
 
@@ -28,7 +28,10 @@ def test_title_normalization():
     bag = lambda t: sorted(norm_title(t).split())   # kolejność słów załatwia token_sort_ratio  # noqa: E731
     assert bag("Programista Android") == bag("Android Developer")
     assert bag("Android Engineer") == bag("Android Developer")
-    assert bag("Android Developer (Kotlin, Compose)") == bag("Senior Android Developer")
+    assert bag("Android Developer (m/f)") == bag("Senior Android Developer")
+    assert bag("Senior Android Developer (praca zdalna)") == bag("Android Developer")
+    assert bag("Mobile Developer (Flutter)") == ["developer", "flutter", "mobile"]      # technologia zostaje
+    assert bag("Android Engineer (KMP, k/m)") == ["android", "developer", "kmp"]
 
 
 def test_same_description_epam_vs_epam_systems_is_sure_duplicate():
@@ -53,15 +56,36 @@ def test_agency_with_same_description_gets_note_and_is_kept():
 
 def test_same_company_android_vs_ios_with_shared_boilerplate_is_not_duplicate():
     dd = dd_with(offer("Acme", "Backend Engineer", BACKEND_DESC),
-                 offer("Acme", "Mobile Developer", ANDROID_DESC, sid="2"))
-    v = dd.check(offer("Acme", "Mobile Developer", IOS_DESC, sid="3"))
-    assert v.rejected is None
+                 offer("Acme", "Mobile Developer (Android)", ANDROID_DESC, sid="2"))
+    v = dd.check(offer("Acme", "Mobile Developer (iOS)", IOS_DESC, sid="3"))
+    assert v.rejected is None and not v.matches
+
+
+def test_flutter_vs_android_in_brackets_is_not_duplicate():
+    dd = dd_with(offer("Acme", "Mobile Developer (Flutter)"))
+    assert dd.check(offer("Acme", "Mobile Developer (Android)", sid="2")).rejected is None
+
+
+def test_same_company_and_title_is_sure_duplicate_whatever_the_content():
+    dd = dd_with(offer("Acme", "Mobile Developer", ANDROID_DESC))
+    v = dd.check(offer("Acme", "Mobile Developer", IOS_DESC, sid="2"))
+    assert v.rejected and v.rejected.reason == SURE_BY_TITLE
+
+
+def test_title_band_note_needs_some_content_overlap_or_missing_description():
+    # "Android Developer" vs "Android Mobile Developer": ta sama firma, tytuł 75-89
+    low = dd_with(offer("Acme", "Android Developer", words("aa", 60)))
+    assert not low.check(offer("Acme", "Android Mobile Developer", words("bb", 60), sid="2")).matches
+    overlap = dd_with(offer("Acme", "Android Developer", BASE_DESC))
+    assert [m.kind for m in overlap.check(offer("Acme", "Android Mobile Developer", SIMILAR_DESC, sid="2")).matches] == ["possible"]
+    no_desc = dd_with(offer("Acme", "Android Developer"))
+    assert [m.kind for m in no_desc.check(offer("Acme", "Android Mobile Developer", sid="2")).matches] == ["possible"]
 
 
 def test_boilerplate_really_is_what_makes_the_difference():
     # bez trzeciej oferty firmy "o nas" nie jest boilerplate'em, więc treść wygląda na zbieżną
     a, b = shingles(norm_description(ANDROID_DESC)), shingles(norm_description(IOS_DESC))
-    assert jaccard(a, b) > 0.6
+    assert containment(a, b) > 0.6
 
 
 def test_same_company_and_title_but_disjoint_salaries_is_not_duplicate():
@@ -79,7 +103,7 @@ def test_salary_from_sheet_text_is_used():
 
 
 def test_programista_vs_developer_with_070_similarity_is_sure_duplicate():
-    c = jaccard(shingles(norm_description(BASE_DESC)), shingles(norm_description(SIMILAR_DESC)))
+    c = containment(shingles(norm_description(BASE_DESC)), shingles(norm_description(SIMILAR_DESC)))
     assert 0.6 <= c < 0.9, c
     dd = dd_with(offer("Acme", "Android Developer", BASE_DESC))
     v = dd.check(offer("Acme", "Programista Android", SIMILAR_DESC, source="justjoinit", sid="2"))
@@ -102,7 +126,7 @@ def test_possible_duplicate_by_title_in_same_company():
 
 def test_without_description_same_company_and_title_is_sure_duplicate():
     dd = dd_with(offer("Acme", "Senior Android Developer"))
-    assert dd.check(offer("Acme", "Android Developer (Kotlin, Compose)", sid="2")).rejected is not None
+    assert dd.check(offer("Acme", "Android Developer (m/f)", sid="2")).rejected is not None
 
 
 def test_different_titles_same_company_are_not_duplicates():

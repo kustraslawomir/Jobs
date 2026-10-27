@@ -6,10 +6,11 @@ Odpowiedź: {"data": [...], "meta": {"totalItems", "next": {"cursor"}}}
 Filtra remote po stronie API nie ma (parametr ignorowany) – remote filtruje main.py.
 Ta sama oferta w kilku miastach to JEDEN rekord z listą "locations", więc tu nie ma duplikatów per miasto.
 """
+import re
 import time
 from models import Offer, Pay
 from contracts import normalize
-from .htmlutil import job_posting_description as _job_posting_description, page_text
+from .htmlutil import clean_text, job_posting_description as _job_posting_description, page_text
 
 LIST_URL = "https://justjoin.it/api/candidate-api/offers"
 PARAMS = {"keywords": "android", "keywordType": "any", "sortBy": "publishedAt",
@@ -89,10 +90,41 @@ def fetch(session) -> list[Offer]:
     return out
 
 
+_DESC_START = re.compile(r'<h3[^>]*>[^<]{2,40}</h3><div class="[^"]*">(?=<(?:p|ul|ol|h[1-6])\b)')
+_DIV = re.compile(r"</?div\b[^>]*>")
+
+
+def _squash(text: str) -> str:
+    return re.sub(r"\W+", "", text).lower()
+
+
+def _dom_description(page: str) -> str:
+    """Blok opisu z DOM strony (HTML Quill: <p>, <li>...). JSON-LD ma ten sam tekst, ale ze sklejonymi akapitami
+    i punktami ("StackAutomotive", "QNXProgramming"), co psuje porównywanie treści i dopasowanie skilli w ATS."""
+    m = _DESC_START.search(page)
+    if not m:
+        return ""
+    depth = 1
+    for tag in _DIV.finditer(page, m.end()):
+        depth += -1 if tag.group(0).startswith("</") else 1
+        if depth == 0:
+            return clean_text(page[m.end():tag.start()])
+    return ""
+
+
+def page_description(page: str) -> str:
+    """Opis oferty: tekst z DOM, o ile zgadza się z JSON-LD (inaczej układ strony się zmienił i bierzemy JSON-LD)."""
+    ld, dom = _job_posting_description(page), _dom_description(page)
+    x, y = _squash(ld), _squash(dom)
+    if dom and ld and min(len(x), len(y)) >= 0.9 * max(len(x), len(y)) and (x in y or y in x):
+        return dom
+    return ld
+
+
 def details(session, offer: Offer) -> str:
     """Pełny opis do ATS: tytuł + skille z listy + tekst oferty. Wołane tylko dla ofert po filtrach."""
     r = session.get(offer.url, headers={"Accept": "text/html"}, timeout=30)
     r.raise_for_status()
-    text = _job_posting_description(r.text) or page_text(r.text)      # fallback: cały tekst strony
+    text = page_description(r.text) or page_text(r.text)      # fallback: cały tekst strony
     time.sleep(1.5)
     return f"{offer.description} {text}"

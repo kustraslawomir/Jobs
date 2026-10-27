@@ -4,6 +4,7 @@ DO WERYFIKACJI w DevTools: SEARCH_URL, body zapytania i nazwy pól w odpowiedzi.
 """
 import time
 from models import Offer
+from .htmlutil import clean_text
 
 SEARCH_URL = "https://nofluffjobs.com/api/search/posting"
 PARAMS = {"salaryCurrency": "PLN", "salaryPeriod": "month", "region": "pl"}
@@ -43,10 +44,12 @@ def details(session, offer: Offer) -> str:
     r = session.get(DETAIL_URL.format(id=offer.source_id), timeout=30)
     r.raise_for_status()
     d = r.json()
-    parts = [offer.title]
+    parts = [offer.description]
     for path in ("requirements.musts", "requirements.nices"):
         for x in pick(d, path, default=[]) or []:
             parts.append(x if isinstance(x, str) else pick(x, "value", "name", default=""))
-    parts.append(str(pick(d, "requirements.description", "details.description", default="")))
+    # pick() zwraca tylko pierwszą istniejącą ścieżkę, a oba pola (opis projektu i wymagania) są potrzebne; HTML -> tekst
+    for path in ("details.description", "requirements.description"):
+        parts.append(clean_text(str(pick(d, path, default=""))))
     time.sleep(1)
     return " ".join(parts)

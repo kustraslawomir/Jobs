@@ -50,6 +50,16 @@ def passes_filters(o, f, fx) -> str | None:
     return None
 
 
+def active_sources(cfg, runner: str | None) -> list[str]:
+    """Włączone źródła z REGISTRY; z `runner` tylko te przypisane do tego runnera (domyślnie "cloud")."""
+    out = []
+    for name, v in cfg["sources"].items():
+        enabled, src_runner = (v.get("enabled", True), v.get("runner", "cloud")) if isinstance(v, dict) else (bool(v), "cloud")
+        if enabled and name in REGISTRY and (runner is None or src_runner == runner):
+            out.append(name)
+    return out
+
+
 def telegram(cfg, text: str):
     tok, chat = os.environ.get("TELEGRAM_TOKEN"), os.environ.get("TELEGRAM_CHAT_ID")
     if not (cfg["notify"].get("telegram") and tok and chat):
@@ -86,6 +96,8 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--init", action="store_true")
     ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--runner", choices=["cloud", "local"],
+                    help="zbieraj tylko źródła przypisane do tego runnera (bez flagi: wszystkie)")
     args = ap.parse_args()
 
     cfg = yaml.safe_load(open("config.yaml", encoding="utf-8"))
@@ -115,9 +127,7 @@ def main():
 
     new, stats, errors, events, runs, unknown = [], {}, [], [], [], set()
     today = dt.date.today().isoformat()
-    for name, enabled in cfg["sources"].items():
-        if not enabled or name not in REGISTRY:
-            continue
+    for name in active_sources(cfg, args.runner):
         try:
             offers = REGISTRY[name](session)
         except Exception as e:                       # jedno źródło padło -> reszta działa

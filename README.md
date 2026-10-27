@@ -62,7 +62,7 @@ Potem: zakładka **Actions → Zbieranie ofert → Run workflow**, żeby odpali�
 |---|---|---|
 | justjoin.it | wewnętrzne JSON API (`/api/candidate-api/offers`) + JSON-LD oferty | działa |
 | nofluffjobs.com | wewnętrzne JSON API | działa |
-| czyjesteldorado.pl | dane osadzone w HTML (payload RSC na `/search`), JSON-LD oferty | działa, agreguje też oferty innych portali (m.in. theprotocol.it, inhire.io) |
+| czyjesteldorado.pl | dane osadzone w HTML (payload RSC na `/search`), JSON-LD oferty | działa **tylko z domowego IP** (z GitHub Actions 403), więc `runner: local` (patrz „Self-hosted runner”); agreguje też oferty innych portali (m.in. theprotocol.it, inhire.io) |
 | bulldogjob.pl | `__NEXT_DATA__` na liście po technologii, JSON-LD oferty | działa (mała pula ofert) |
 | solid.jobs | oficjalne publiczne REST API (`/public-api/offers/IT`) | działa, pełny opis w liście |
 | theprotocol.it | – | **nie podłączone**: Cloudflare (403 „Just a moment…”) także dla sitemap z robots.txt; nie obchodzimy. Część ofert wpada przez czyjesteldorado.pl |
@@ -70,3 +70,32 @@ Potem: zakładka **Actions → Zbieranie ofert → Run workflow**, żeby odpali�
 | inhire.io | – | **nie podłączone**: SPA, lista ofert idzie przez wewnętrzne API, którego adresu nie da się ustalić z kodu statycznego. Żeby je dodać: trace z DevTools → Network → Fetch/XHR (URL + fragment odpowiedzi). Część ofert wpada przez czyjesteldorado.pl |
 
 Formy współpracy mapuje `contracts.py` na B2B / UoP / UZ / UoD; nieznane wartości zostają surowe i `--dry-run` wypisuje je jako „nieznana forma”.
+
+## Self-hosted runner (Mac) dla źródeł z `runner: local`
+
+Niektóre portale (teraz czyjesteldorado.pl) blokują adresy IP serwerowni GitHuba (403), ale działają z domowego łącza. Takie źródła w `config.yaml` mają `runner: local` i zbiera je `scrape-local.yml` na Twoim Macu. Pozostałe (`runner: cloud`, domyślnie) zbiera `scrape.yml` w chmurze. Dedup działa wobec całego arkusza, więc kolejność i rozłączność runów nie ma znaczenia.
+
+### Instalacja (jednorazowo)
+1. Python ≥ 3.10 na Macu (`python3 --version`; jeśli starszy: `brew install python@3.12`). Repo musi być **prywatne** (self-hosted runner na publicznym repo to ryzyko).
+2. GitHub → repo → **Settings → Actions → Runners → New self-hosted runner → macOS**. Strona pokaże komendy z aktualną wersją i jednorazowym tokenem; wykonaj je w terminalu (mają postać):
+   ```bash
+   mkdir ~/actions-runner && cd ~/actions-runner
+   curl -o actions-runner-osx-arm64.tar.gz -L <URL ze strony>
+   tar xzf ./actions-runner-osx-arm64.tar.gz
+   ./config.sh --url https://github.com/kustraslawomir/Jobs --token <TOKEN ze strony>
+   ```
+   Przy pytaniach zostaw domyślne (grupa, nazwa, etykiety `self-hosted, macOS, ARM64`).
+3. PATH dla usługi (launchd nie widzi Homebrew): `echo "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin" > ~/actions-runner/.path`
+4. Instalacja jako usługa, żeby startowała po zalogowaniu:
+   ```bash
+   cd ~/actions-runner
+   ./svc.sh install && ./svc.sh start
+   ```
+5. Test: **Actions → Zbieranie ofert (lokalny runner) → Run workflow → dry-run**.
+
+### Jak to działa i jak sprawdzić
+- Job `scrape-local` czeka w kolejce na runner **do 24 h**; gdy Mac śpi lub jest wyłączony, wystartuje po jego wybudzeniu (po 24 h GitHub go anuluje). Nie ma wtedy wiersza w zakładce „Źródła”, więc brak runu widać tylko po dacie ostatniego wiersza.
+- Status usługi: `cd ~/actions-runner && ./svc.sh status`. Status w GitHubie: **Settings → Actions → Runners** (Idle = gotowy, Active = pracuje, Offline = Mac śpi lub usługa stoi) albo `gh api repos/kustraslawomir/Jobs/actions/runners --jq '.runners[] | [.name,.status,.busy] | @tsv'`.
+- Logi runów: `gh run list --workflow=scrape-local.yml`.
+- Zatrzymanie / odinstalowanie: `./svc.sh stop`, `./svc.sh uninstall`.
+- Venv z zależnościami leży w katalogu roboczym runnera (`_work/Jobs/.venv`), nie w systemowym Pythonie.

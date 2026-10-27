@@ -2,12 +2,15 @@
 
 1. Ten sam portal i ID: klucz source:id (kolumna "Klucz" w arkuszu).
 2. Treść + tytuł + firma, wobec ofert z arkusza i z tego samego runu:
-   - treść: shingle 5-słowne na znormalizowanym opisie, podobieństwo Jaccarda,
-   - tytuł: fuzz.token_sort_ratio na tytułach po normalizacji (PL->EN, developer == engineer,
-     bez nawiasów i oznaczeń płci, bez słów typu senior/lead),
+   - treść: shingle 3-słowne na znormalizowanym opisie, containment |A∩B| / min(|A|,|B|). Ten sam wakat opisany
+     przez dwa portale ma różny kształt (jeden oddaje całą stronę, drugi listę wymagań + opis), więc Jaccard
+     karał krótszy opis za to, że drugi jest dłuższy; containment pyta, ile krótszego opisu jest w dłuższym,
+   - tytuł: fuzz.token_sort_ratio na tytułach po normalizacji (PL->EN, developer == engineer, bez słów typu
+     senior/lead; z nawiasów zostają tylko słowa technologiczne/platformowe, np. (Flutter) vs (Android) to różne role),
    - firma: bez form prawnych i końcówek (systems, software, ...); ta sama przy ratio >= 92
      albo gdy jedna nazwa jest pełnym prefiksem drugiej (min. 4 znaki).
-   Pewny duplikat -> odrzucamy. Możliwy duplikat i oferta agencji -> zostaje, z notatką.
+   Pewny duplikat -> odrzucamy: ta sama firma + tytuł >= 90 (niezależnie od treści) albo treść >= 0.90 + tytuł >= 70.
+   Możliwy duplikat i oferta agencji -> zostaje, z notatką.
    Dwie oferty z rozłącznymi widełkami to dwa różne wakaty, nigdy duplikat.
 3. Agencje: oferta agencji, której treść pasuje do oferty innej firmy, nie jest odrzucana.
 
@@ -29,7 +32,10 @@ _LEGAL = re.compile(r"\b(sp\.? ?z ?o\.? ?o\.?|s\.? ?a\.?|sp\.? ?k\.?|gmbh|ltd|in
 _COMPANY_TAIL = {"systems", "software", "technologies", "technology", "solutions", "consulting",
                  "it", "labs", "group", "poland", "polska", "europe"}
 _TITLE_NOISE = re.compile(r"\b(senior|sr|mid|regular|lead|principal|staff|junior|m/f|k/m|f/m/d|m/w/d|remote|zdalnie|100%)\b")
-_BRACKETS = re.compile(r"[(\[].*?[)\]]")
+_BRACKETS = re.compile(r"[(\[](.*?)[)\]]")
+# z nawiasów zostają tylko słowa technologiczne/platformowe; reszta (płeć, forma, "praca zdalna", nazwy projektów) znika
+_TECH = {"android", "ios", "flutter", "kmp", "kotlin", "multiplatform", "react", "native", "aaos", "aosp",
+         "automotive", "swift", "compose", "xamarin", "unity"}
 _PL_EN = {"programista": "developer", "inzynier": "engineer", "starszy": "senior",
           "mlodszy": "junior", "specjalista": "specialist", "engineer": "developer"}
 _NON = re.compile(r"[^a-z0-9 ]+")
@@ -39,11 +45,12 @@ AGENCY_HINTS = ("recruit", "rekrut", "hr ", "talent", "hays", "antal", "michael 
                 "randstad", "sii", "connectis", "devire", "grafton", "useme", "clurgo")
 
 MAX_DESC_CHARS = 20_000      # tyle znormalizowanego opisu trzymamy w zakładce "_opisy"
-SHINGLE = 5
+SHINGLE = 3
+MIN_STRIPPED = 5             # po wycięciu boilerplate'u musi zostać przynajmniej tyle shingli, inaczej porównujemy bez wycinania
 MIN_DESC_WORDS = 30          # krótszy opis (np. sam tytuł + skille z listy) nie nadaje się do porównań
 
 DEFAULTS = {"title_sure": 90, "title_possible": 75, "title_content": 70,
-            "content_sure": 0.90, "content_possible": 0.60, "company_ratio": 92}
+            "content_sure": 0.90, "content_possible": 0.60, "content_title_band": 0.30, "company_ratio": 92}
 
 SURE_BY_TITLE = "duplikat (firma i tytuł)"
 SURE_BY_CONTENT = "duplikat (tylko po treści)"
@@ -83,9 +90,13 @@ def same_company(a: tuple[str, str], b: tuple[str, str], ratio: int = 92) -> boo
                ((a_core, b_core), (a_base, b_base), (a_core, b_base), (a_base, b_core)))
 
 
+def _keep_tech(m) -> str:
+    return " " + " ".join(w for w in _NON.sub(" ", m.group(1)).split() if w in _TECH) + " "
+
+
 def norm_title(s: str) -> str:
     s = _ascii((s or "").lower())
-    s = _TITLE_NOISE.sub(" ", _BRACKETS.sub(" ", s))     # nawiasy tylko do wyświetlania, nie do porównań
+    s = _TITLE_NOISE.sub(" ", _BRACKETS.sub(_keep_tech, s))
     words = _SP.sub(" ", _NON.sub(" ", s)).split()
     words = [_PL_EN.get(w, w) for w in words]
     return " ".join(w for w in words if w not in ("senior", "junior"))
@@ -103,8 +114,9 @@ def shingles(norm_text: str, n: int = SHINGLE) -> frozenset[str] | None:
     return frozenset(" ".join(words[i:i + n]) for i in range(len(words) - n + 1))
 
 
-def jaccard(a: frozenset, b: frozenset) -> float:
-    return len(a & b) / len(a | b) if a and b else 0.0
+def containment(a: frozenset, b: frozenset) -> float:
+    """Jaka część krótszego opisu (w shinglach) występuje w dłuższym."""
+    return len(a & b) / min(len(a), len(b)) if a and b else 0.0
 
 
 def looks_like_agency(company: str) -> bool:
@@ -222,9 +234,9 @@ class Deduper:
             df = self.df.get(e.forms[1], {})
             boiler = {s for s in a | b if df.get(s, 0) + (s in a) >= 3}
             a2, b2 = a - boiler, b - boiler
-            if len(a2) >= SHINGLE and len(b2) >= SHINGLE:
+            if len(a2) >= MIN_STRIPPED and len(b2) >= MIN_STRIPPED:
                 a, b = a2, b2
-        return jaccard(a, b)
+        return containment(a, b)
 
     def check(self, offer) -> Verdict:
         c = self.cfg
@@ -249,7 +261,7 @@ class Deduper:
             if not same_co and cand_agency and content is not None and content >= c["content_possible"]:
                 agency.append(m("agency"))
                 continue
-            sure_title = same_co and t >= c["title_sure"] and (content is None or content >= c["content_possible"])
+            sure_title = same_co and t >= c["title_sure"]               # niezależnie od treści; rozłączne widełki odpadły wyżej
             sure_content = content is not None and content >= c["content_sure"] and t >= c["title_content"]
             if sure_title or sure_content:
                 if not same_co and e.agency:                # bezpośrednia oferta kontra wpis agencji: nie wycinamy
@@ -257,7 +269,9 @@ class Deduper:
                 else:
                     dups.append(m("dup", SURE_BY_TITLE if sure_title else SURE_BY_CONTENT))
             elif (content is not None and c["content_possible"] <= content < c["content_sure"]
-                  and t >= c["title_content"]) or (same_co and c["title_possible"] <= t < c["title_sure"]):
+                  and t >= c["title_content"]) or (
+                    same_co and c["title_possible"] <= t < c["title_sure"]
+                    and (content is None or content >= c["content_title_band"])):
                 possible.append(m("possible"))
 
         def best(ms):

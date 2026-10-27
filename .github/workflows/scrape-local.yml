@@ -1,0 +1,41 @@
+name: Zbieranie ofert (lokalny runner)
+
+# Źródła z runner: local w config.yaml (np. czyjesteldorado.pl, które blokuje IP serwerowni GitHuba).
+# Działa na self-hosted runnerze (Mac). Cron przesunięty o 20 min względem scrape.yml.
+on:
+  schedule:
+    - cron: "33 5,13 * * 1-5"
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "Tryb"
+        type: choice
+        options: [run, dry-run]
+        default: run
+
+concurrency:
+  group: scrape-local
+  cancel-in-progress: false
+
+jobs:
+  scrape-local:
+    runs-on: [self-hosted, macOS]
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Venv i zależności
+        run: |
+          python3 -m venv "$RUNNER_WORKSPACE/.venv"
+          "$RUNNER_WORKSPACE/.venv/bin/pip" install --quiet -r requirements.txt
+      - name: Run
+        env:
+          GOOGLE_SA_JSON: ${{ secrets.GOOGLE_SA_JSON }}
+          SHEET_ID: ${{ secrets.SHEET_ID }}
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          PY="$RUNNER_WORKSPACE/.venv/bin/python"
+          case "${{ inputs.mode || 'run' }}" in
+            dry-run) "$PY" main.py --dry-run --runner local ;;
+            *)       "$PY" main.py --runner local ;;
+          esac

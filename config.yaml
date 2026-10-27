@@ -20,10 +20,13 @@ filters:
   # odrzuć oferty z matchem poniżej progu (0-1); 0 = nie filtruj
   min_match: 0.4
 
+# true/false albo {enabled: true, runner: cloud|local}. runner decyduje, który workflow zbiera źródło:
+#   cloud = GitHub Actions (scrape.yml), local = self-hosted runner na Macu (scrape-local.yml).
+# Samo true/false oznacza runner "cloud". czyjesteldorado.pl blokuje IP serwerowni (403), więc działa lokalnie.
 sources:
   justjoinit: true
   nofluffjobs: true
-  czyjesteldorado: true
+  czyjesteldorado: {enabled: true, runner: local}
   bulldogjob: true
   solidjobs: true
 
