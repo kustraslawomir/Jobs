@@ -26,7 +26,7 @@ def passes_filters(o, f, fx) -> str | None:
         return "tytuł spoza zakresu"
     if any(k in t for k in f["title_exclude"]):
         return "wykluczone słowo w tytule"
-    if f.get("remote_only") and o.remote is False:
+    if f.get("remote_only") and o.remote is not True:
         return "nie remote"
     top = o.salary_to_pln_month(fx)
     if f.get("min_salary_to_pln") and top is not None and top < f["min_salary_to_pln"]:
