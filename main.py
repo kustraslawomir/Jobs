@@ -14,6 +14,7 @@ import requests
 import yaml
 
 import ats
+import level
 from dedup import Deduper, SURE_BY_CONTENT, looks_like_agency, norm_description
 from sources import DETAILS, REGISTRY
 from contracts import is_known
@@ -179,6 +180,10 @@ def main():
                 notes.append("Mało danych do ATS – sprawdź opis ręcznie")
             if looks_like_agency(o.company) and not any(m.kind == "agency" for m in verdict.matches):
                 notes.append("Agencja? Ustal klienta końcowego, zanim wyślesz CV.")
+            assessment = level.assess(o.title, o.description, o.seniority, cfg["level"])
+            o.level = assessment.level
+            if assessment.note:
+                notes.append(assessment.note)                # dopisujemy do notatek, niczego nie nadpisując
             o.note = ". ".join(notes)
             dd.add(o)
             new.append(o)
@@ -188,7 +193,7 @@ def main():
     if args.dry_run:
         for o in new:
             m = f"{o.match:.0%}" if o.match is not None else "–"
-            print(f"{m:>5}  {o.company} – {o.title} | {o.salary_text()} | wym.: {o.n_req} | luki: {', '.join(o.gaps) or '-'}")
+            print(f"{m:>5}  {o.level:<7} {o.company} – {o.title} | {o.salary_text()} | wym.: {o.n_req} | luki: {', '.join(o.gaps) or '-'}")
     else:
         import sheets
         written = sheets.append_offers(ws, new, today, last_row)

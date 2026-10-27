@@ -32,7 +32,7 @@ def fetch(session) -> list[Offer]:
             location=pick(it, "location.places.0.city", default=""),
             salary_from=pick(it, "salary.from"), salary_to=pick(it, "salary.to"),
             currency=str(pick(it, "salary.currency", default="")).upper(),
-            contract=[typ] if typ else [],
+            contract=[typ] if typ else [], seniority=pick(it, "seniority", default=[]),
             description=" ".join([pick(it, "title", default=""), str(pick(it, "technology", default=""))]),
         ))
     return out

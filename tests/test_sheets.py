@@ -15,8 +15,8 @@ def test_new_offers_are_sorted_by_match_descending_with_empty_match_last():
 
 def test_mirror_formulas_use_semicolons_for_polish_locale():
     a1, a2 = sheets.mirror_formulas(sheets.arg_separator("pl_PL"))
-    assert a1 == "={Oferty!A1:O1}"
-    assert a2 == ('=IFERROR(SORT(FILTER(Oferty!A2:O;Oferty!E2:E<>"";Oferty!E2:E<>"Do wysłania";'
+    assert a1 == "={Oferty!A1:P1}"
+    assert a2 == ('=IFERROR(SORT(FILTER(Oferty!A2:P;Oferty!E2:E<>"";Oferty!E2:E<>"Do wysłania";'
                   'Oferty!E2:E<>"Rezygnacja");6;FALSE);"Jeszcze nic nie wysłane")')
 
 
@@ -29,9 +29,10 @@ def test_filter_views_cover_whole_columns_and_skip_existing_ones():
     f = {r["addFilterView"]["filter"]["title"]: r["addFilterView"]["filter"] for r in reqs}
     assert set(f) == {"Do przejrzenia", "Najnowsze"}
     todo = f["Do przejrzenia"]
-    assert todo["range"] == {"sheetId": 7, "startColumnIndex": 0, "endColumnIndex": 17}       # A:Q, bez ograniczenia wierszy
+    assert todo["range"] == {"sheetId": 7, "startColumnIndex": 0, "endColumnIndex": 18}       # A:R, bez ograniczenia wierszy
     assert todo["sortSpecs"] == [{"dimensionIndex": sheets.COL["Match"], "sortOrder": "DESCENDING"}]
-    assert todo["criteria"] == {"4": {"condition": {"type": "TEXT_EQ", "values": [{"userEnteredValue": "Do wysłania"}]}}}
+    assert todo["criteria"] == {"4": {"condition": {"type": "TEXT_EQ", "values": [{"userEnteredValue": "Do wysłania"}]}},
+                                "10": {"hiddenValues": ["Senior+"]}}                           # Poziom = kolumna K
     assert f["Najnowsze"]["sortSpecs"] == [{"dimensionIndex": 0, "sortOrder": "DESCENDING"}]
     assert [r["addFilterView"]["filter"]["title"] for r in sheets.filter_view_requests(7, ["Najnowsze"])] == ["Do przejrzenia"]
     assert sheets.filter_view_requests(7, ["Najnowsze", "Do przejrzenia"]) == []
@@ -43,17 +44,21 @@ def test_blank_sheet_detection():
 
 
 NEW = ["Dodano", "Firma", "Stanowisko", "Link", "Status", "Wysłano CV", "Rozmowa", "Następny krok", "Termin",
-       "Match", "Widełki / forma", "Kontakt", "Luki", "Dopisz do CV", "Notatki", "Źródło", "Klucz"]
+       "Match", "Poziom", "Widełki / forma", "Kontakt", "Luki", "Dopisz do CV", "Notatki", "Źródło", "Klucz"]
+NO_LEVEL = [h for h in NEW if h != "Poziom"]               # układ sprzed kolumny Poziom (17 kolumn)
 OLD = ["Dodano", "Firma", "Stanowisko", "Link", "Status", "Wysłano CV", "Rozmowa", "Następny krok", "Termin",
        "Alert", "Match", "Luki", "Dopisz do CV", "Kontakt", "Widełki / forma", "Notatki", "Źródło", "Klucz"]
 
 
 def apply(headers, reqs):
-    """Symulacja semantyki API: deleteDimension usuwa kolumnę, moveDimension wstawia ją PRZED destinationIndex układu wyjściowego."""
+    """Symulacja semantyki API: deleteDimension usuwa kolumnę, insertDimension wstawia pustą (nagłówek dopisuje migrate),
+    moveDimension wstawia ją PRZED destinationIndex układu wyjściowego."""
     h = list(headers)
     for r in reqs:
         if "deleteDimension" in r:
             h.pop(r["deleteDimension"]["range"]["startIndex"])
+        elif "insertDimension" in r:
+            h.insert(r["insertDimension"]["range"]["startIndex"], "Poziom")
         else:
             m = r["moveDimension"]
             i, d = m["source"]["startIndex"], m["destinationIndex"]
@@ -62,18 +67,25 @@ def apply(headers, reqs):
     return h
 
 
-def test_new_layout_has_17_columns_with_key_last():
-    assert sheets.HEADERS == NEW and len(NEW) == 17
-    assert (sheets.COL["Match"], sheets.COL["Widełki / forma"], sheets.COL["Kontakt"], sheets.COL["Klucz"]) == (9, 10, 11, 16)
+def test_new_layout_has_18_columns_with_level_after_match_and_key_last():
+    assert sheets.HEADERS == NEW and len(NEW) == 18
+    assert (sheets.COL["Match"], sheets.COL["Poziom"], sheets.COL["Widełki / forma"], sheets.COL["Kontakt"],
+            sheets.COL["Notatki"], sheets.COL["Klucz"]) == (9, 10, 11, 12, 15, 17)
+    assert sheets.MIRROR_COLS == 16 and sheets.MIRROR_LAST == "P"
     assert "Alert" not in sheets.COL
 
 
-def test_migration_of_old_layout_deletes_alert_and_moves_two_columns():
+def test_migration_of_17_column_layout_inserts_level_after_match_without_touching_data():
+    reqs = sheets.migration_requests(NO_LEVEL, 5)
+    assert reqs == [{"insertDimension": {"range": {"sheetId": 5, "dimension": "COLUMNS", "startIndex": 10, "endIndex": 11},
+                                         "inheritFromBefore": False}}]
+    assert apply(NO_LEVEL, reqs) == NEW
+
+
+def test_migration_of_old_layout_deletes_alert_inserts_level_and_moves_two_columns():
     reqs = sheets.migration_requests(OLD, 5)
-    assert [list(r)[0] for r in reqs] == ["deleteDimension", "moveDimension", "moveDimension"]
+    assert [list(r)[0] for r in reqs] == ["deleteDimension", "insertDimension", "moveDimension", "moveDimension"]
     assert reqs[0]["deleteDimension"]["range"] == {"sheetId": 5, "dimension": "COLUMNS", "startIndex": 9, "endIndex": 10}
-    assert (reqs[1]["moveDimension"]["source"]["startIndex"], reqs[1]["moveDimension"]["destinationIndex"]) == (13, 10)
-    assert (reqs[2]["moveDimension"]["source"]["startIndex"], reqs[2]["moveDimension"]["destinationIndex"]) == (13, 11)
     assert apply(OLD, reqs) == NEW
 
 
@@ -81,11 +93,11 @@ def test_migration_is_idempotent_and_finishes_intermediate_layouts():
     assert sheets.migration_requests(NEW, 5) == []
     no_alert = [h for h in OLD if h != "Alert"]
     reqs = sheets.migration_requests(no_alert, 5)
-    assert [list(r)[0] for r in reqs] == ["moveDimension", "moveDimension"] and apply(no_alert, reqs) == NEW
+    assert [list(r)[0] for r in reqs] == ["insertDimension", "moveDimension", "moveDimension"] and apply(no_alert, reqs) == NEW
     half = ["Dodano", "Firma", "Stanowisko", "Link", "Status", "Wysłano CV", "Rozmowa", "Następny krok", "Termin",
             "Match", "Widełki / forma", "Luki", "Dopisz do CV", "Kontakt", "Notatki", "Źródło", "Klucz"]
     reqs = sheets.migration_requests(half, 5)
-    assert len(reqs) == 1 and apply(half, reqs) == NEW
+    assert [list(r)[0] for r in reqs] == ["insertDimension", "moveDimension"] and apply(half, reqs) == NEW
 
 
 def test_migration_refuses_unknown_layouts_before_changing_anything():
@@ -111,12 +123,12 @@ def test_layout_guard_blocks_writes_to_old_sheets():
 
 def test_offer_row_puts_values_in_the_new_columns():
     o = SimpleNamespace(match=0.83, company="Acme", title="Android Developer", url="https://x", gaps=["Java"],
-                        add_to_cv=["Compose"], note="uwaga", source="justjoinit", key="justjoinit:1",
+                        add_to_cv=["Compose"], note="uwaga", level="Senior+", source="justjoinit", key="justjoinit:1",
                         salary_text=lambda: "B2B 20 000–25 000")
     row = sheets.offer_row(o, "2026-10-27")
-    assert len(row) == 17
-    assert row[9] == 0.83 and row[10] == "B2B 20 000–25 000" and row[11] == "" and row[12] == "Java"
-    assert row[13] == "Compose" and row[14] == "uwaga" and row[15] == "justjoinit" and row[16] == "justjoinit:1"
+    assert len(row) == 18
+    assert row[9] == 0.83 and row[10] == "Senior+" and row[11] == "B2B 20 000–25 000" and row[12] == "" and row[13] == "Java"
+    assert row[14] == "Compose" and row[15] == "uwaga" and row[16] == "justjoinit" and row[17] == "justjoinit:1"
     assert row[4] == "Do wysłania" and row[0] == "2026-10-27"
 
 
@@ -139,3 +151,30 @@ def test_delete_backup_refuses_anything_but_backup_tabs():
     assert deleted == []
     sheets.delete_backup(SH(), "Oferty_backup_2026-10-27")
     assert deleted == ["Oferty_backup_2026-10-27"]
+
+
+CFG_LEVEL = __import__("yaml").safe_load(open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                                                           "config.yaml"), encoding="utf-8"))["level"]
+
+
+def test_level_backfill_fills_only_blank_cells_and_appends_to_notes():
+    def row(firma, tytul, poziom, notatki, klucz):
+        r = [""] * 18
+        r[1], r[2], r[10], r[15], r[17] = firma, tytul, poziom, notatki, klucz
+        return r
+    rows = [row("A", "Android Developer", "", "ręczna notatka", "x:1"),       # wiersz 2: opis -> Senior+ (8 lat)
+            row("B", "Android Developer", "Mid", "moje", "x:2"),              # wiersz 3: ręcznie ustawiony, bez zmian
+            row("C", "Senior Android Developer", "", "", "x:3"),              # wiersz 4: brak opisu -> "?" mimo tytułu
+            row("", "", "", "", ""),                                          # pusty wiersz pomijamy
+            row("D", "Android Developer", "", "", "x:4")]                     # wiersz 6: brak sygnałów -> "?", bez notatki
+    desc = {"x:1": "wymagamy min 8 lat doswiadczenia, system design", "x:2": "10 years", "x:4": "kotlin compose"}
+    assert sheets.level_backfill(rows, desc, CFG_LEVEL) == [
+        (2, "Senior+", "ręczna notatka. Poziom: 8+ lat, system design"), (4, "?", None), (6, "?", None)]
+
+
+def test_level_format_rule_is_added_once():
+    reqs = sheets.level_format_requests(7, [])
+    rule = reqs[0]["addConditionalFormatRule"]["rule"]
+    assert rule["ranges"] == [{"sheetId": 7, "startRowIndex": 1, "startColumnIndex": 10, "endColumnIndex": 11}]
+    assert rule["booleanRule"]["condition"] == {"type": "TEXT_EQ", "values": [{"userEnteredValue": "Senior+"}]}
+    assert sheets.level_format_requests(7, [rule]) == []

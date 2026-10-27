@@ -10,7 +10,10 @@ filters:
   title_exclude: ["junior", "intern", "internship", "staż", "stażysta", "trainee", "ios developer", "react native",
                   "qa", "tester", "test engineer", "react", "electron", "angular", "frontend", "backend", "devops",
                   "test automation", "automation", "product", "designer", "ux", "ui/ux", "owner", "manager",
-                  "marketing", "sales"]
+                  "marketing", "sales",
+                  # role liderskie i architektoniczne: celujemy w Mid / Senior, nie w lidera
+                  "lead", "tech lead", "team lead", "leader", "lider", "staff", "principal", "architect",
+                  "head", "director", "kierownik"]
   remote_only: true
   # dozwolone formy współpracy (kody z contracts.py); oferta bez podanej formy przechodzi
   contract_allow: ["B2B", "UoP", "UZ", "UoD"]
@@ -40,6 +43,40 @@ dedup:
   content_possible: 0.60
   # zgodność nazw firm po normalizacji (rapidfuzz ratio)
   company_ratio: 92
+
+# ocena poziomu stanowiska (kolumna Poziom, moduł level.py); wpisy na wierszach, którym brak sygnałów, dostają "?"
+level:
+  # wymagane lata doświadczenia: do years_mid_max = Mid, do years_senior_max = Senior, więcej = Senior+
+  years_mid_max: 4
+  years_senior_max: 7
+  # sygnały podbijające Senior -> Senior+: etykieta (trafia do Notatek) -> lista regexów.
+  # Regexy działają na tekście znormalizowanym: małe litery, bez polskich ogonków i bez interpunkcji
+  # (np. "live-coding" to "live coding", "przywództwo" to "przywodztwo").
+  bump_signals:
+    "mentoring / prowadzenie zespołu":
+      - 'mentor(?:ing|ship)? (?:of |for )?(?:junior|juniors|other|others|less|team|engineers|developers|mlodszych|zespol)'
+      - '(?:act|acting|serve|serving|being|be) as (?:a )?mentor'
+      - 'mentoruj\w*|mentorowa\w* (?:mlodszych|zespol|junior)'
+      - 'lead(?:ing)? (?:a |the |our |small )?(?:small )?(?:team|squad|engineers|developers)'
+      - 'prowadzeni\w* zespol\w*|kierowani\w* zespol\w*'
+    "ownership of architecture":
+      - '(?:own|owns|owning|ownership of|ownership over) (?:the |our )?(?:\w+ )?architecture'
+      - 'architecture ownership'
+      - 'odpowiedzialn\w* za architektur\w*'
+      - '(?:define|defining|set|setting) (?:the |our )?(?:\w+ )?architecture'
+    "technical leadership":
+      - 'technical leadership|tech leadership|technical lead(?:er)?\b'
+      - 'przywodztw\w* technicz\w*|lider\w* technicz\w*|techniczn\w* lider\w*'
+    "system design":
+      - 'system design|systems design|projektowani\w* system\w*'
+    "live coding":
+      - 'live coding|kodowani\w* na zywo'
+    "algorytmy / LeetCode":
+      - 'leetcode|algorithmic|algorytmiczn\w*'
+    "zadanie domowe":
+      - 'take home|home assignment|zadani\w* domow\w*|zadani\w* rekrutacyjn\w*'
+    "4+ etapy rekrutacji":
+      - '(?:[4-9]|four|five|six|cztery|piec|szesc) (?:stage|stages|step|steps|round|rounds|interview|interviews|etap\w*|rozmow\w*)'
 
 sheet:
   tab_offers: "Oferty"

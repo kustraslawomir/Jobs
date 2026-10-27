@@ -4,14 +4,17 @@ import json
 import os
 import gspread
 
+import level
+
 HEADERS = ["Dodano", "Firma", "Stanowisko", "Link", "Status", "Wysłano CV", "Rozmowa",
-           "Następny krok", "Termin", "Match", "Widełki / forma", "Kontakt", "Luki", "Dopisz do CV",
+           "Następny krok", "Termin", "Match", "Poziom", "Widełki / forma", "Kontakt", "Luki", "Dopisz do CV",
            "Notatki", "Źródło", "Klucz"]
 COL = {h: i for i, h in enumerate(HEADERS)}           # 0-based
 STATUSES = ["Do wysłania", "Wysłane", "Odpowiedź", "Rozmowa", "Zadanie domowe", "Oferta",
             "Przyjęta", "Odrzucone", "Rezygnacja", "Ghosting"]
 MIRROR_TAB = "Aplikowane"
-MIRROR_COLS = 15                 # A:O z Ofert (do Notatek, bez Źródło i Klucz)
+MIRROR_COLS = COL["Notatki"] + 1   # A:P z Ofert (do Notatek, bez Źródło i Klucz)
+MIRROR_LAST = gspread.utils.rowcol_to_a1(1, MIRROR_COLS).rstrip("0123456789")
 SOURCE_HEADERS = ["Źródło", "Data", "Pobrane", "Nowe", "Błąd"]
 SKILL_HEADERS = ["Kategoria", "Keyword", "Wariant 2", "Wariant 3", "Wariant 4", "Mam?", "Waga 1-3", "Komentarz"]
 
@@ -25,9 +28,9 @@ def connect():
 def mirror_formulas(sep: str) -> tuple[str, str]:
     """Formuły lustra Ofert: bez wierszy "Do wysłania", "Rezygnacja" i pustych, najpierw ostatnio wysłane (kol. F, "Wysłano CV").
     `sep` to separator argumentów: ";" dla arkuszy z polskim (i innym europejskim) locale, "," dla en_US."""
-    a1 = "={Oferty!A1:O1}"          # goła referencja pokazałaby tylko A1; literał tablicowy rozlewa się na 15 kolumn
-    a2 = ('=IFERROR(SORT(FILTER(Oferty!A2:O{s}Oferty!E2:E<>""{s}Oferty!E2:E<>"Do wysłania"{s}'
-          'Oferty!E2:E<>"Rezygnacja"){s}6{s}FALSE){s}"Jeszcze nic nie wysłane")').format(s=sep)
+    a1 = f"={{Oferty!A1:{MIRROR_LAST}1}}"          # goła referencja pokazałaby tylko A1; literał tablicowy rozlewa się na 16 kolumn
+    a2 = ('=IFERROR(SORT(FILTER(Oferty!A2:{c}{s}Oferty!E2:E<>""{s}Oferty!E2:E<>"Do wysłania"{s}'
+          'Oferty!E2:E<>"Rezygnacja"){s}6{s}FALSE){s}"Jeszcze nic nie wysłane")').format(s=sep, c=MIRROR_LAST)
     return a1, a2
 
 
@@ -65,12 +68,14 @@ FILTER_VIEW_TITLES = ("Do przejrzenia", "Najnowsze")
 
 
 def filter_view_requests(sheet_id: int, existing_titles) -> list[dict]:
-    """Widoki filtrów na całych kolumnach A:Q zakładki Oferty; pomija te, które już istnieją (po nazwie)."""
+    """Widoki filtrów na całych kolumnach A:R zakładki Oferty; pomija te, które już istnieją (po nazwie).
+    "Do przejrzenia" pokazuje tylko "Do wysłania" i chowa Poziom "Senior+"."""
     rng = {"sheetId": sheet_id, "startColumnIndex": 0, "endColumnIndex": len(HEADERS)}
     views = [
         ("Do przejrzenia", {"sortSpecs": [{"dimensionIndex": COL["Match"], "sortOrder": "DESCENDING"}],
                             "criteria": {str(COL["Status"]): {"condition": {"type": "TEXT_EQ",
-                                                                            "values": [{"userEnteredValue": "Do wysłania"}]}}}}),
+                                                                            "values": [{"userEnteredValue": "Do wysłania"}]}},
+                                         str(COL["Poziom"]): {"hiddenValues": [level.SENIOR_PLUS]}}}),
         ("Najnowsze", {"sortSpecs": [{"dimensionIndex": COL["Dodano"], "sortOrder": "DESCENDING"}]}),
     ]
     return [{"addFilterView": {"filter": {"title": title, "range": rng, **spec}}}
@@ -127,18 +132,18 @@ def ensure_mirror_tab(sh, offers_ws, locale: str):
 
 
 def refresh_mirror(sh, offers_ws, locale: str):
-    """Po zmianie układu Ofert: przepisuje formuły lustra (A:O), zwęża je do 15 kolumn i przestawia formaty."""
+    """Po zmianie układu Ofert: dopasowuje liczbę kolumn lustra do MIRROR_COLS, przepisuje formuły (A:P) i przestawia formaty."""
     ws = ensure_mirror_tab(sh, offers_ws, locale)
     if ws is not None:
         return ws
     ws = sh.worksheet(MIRROR_TAB)
-    write_mirror_formulas(ws, arg_separator(locale))
-    sh.batch_update({"requests": [
+    sh.batch_update({"requests": [                                                # najpierw miejsce na rozlanie tablicy
         {"updateSheetProperties": {"properties": {"sheetId": ws.id, "gridProperties": {"columnCount": MIRROR_COLS}},
                                    "fields": "gridProperties.columnCount"}},
         {"repeatCell": {"range": {"sheetId": ws.id, "startRowIndex": 1},          # czyścimy stare formaty liczb
                         "cell": {"userEnteredFormat": {}}, "fields": "userEnteredFormat.numberFormat"}},
     ] + mirror_format_requests(ws.id)})
+    write_mirror_formulas(ws, arg_separator(locale))
     return ws
 
 
@@ -153,6 +158,29 @@ def ensure_filter_views(sh, offers_ws):
     print("Widoki filtrów w Ofertach:", [v["title"] for v in sheet.get("filterViews", [])])
 
 
+def level_format_requests(sheet_id: int, existing_rules: list[dict]) -> list[dict]:
+    """Formatowanie warunkowe: Poziom "Senior+" na pomarańczowo. Pomija, gdy taka reguła już jest na tej kolumnie."""
+    col = COL["Poziom"]
+    for rule in existing_rules:
+        cond = (rule.get("booleanRule") or {}).get("condition") or {}
+        vals = [v.get("userEnteredValue") for v in cond.get("values", [])]
+        if cond.get("type") == "TEXT_EQ" and vals == [level.SENIOR_PLUS] and any(
+                r.get("startColumnIndex") == col for r in rule.get("ranges", [])):
+            return []
+    return [{"addConditionalFormatRule": {"index": 0, "rule": {
+        "ranges": [{"sheetId": sheet_id, "startRowIndex": 1, "startColumnIndex": col, "endColumnIndex": col + 1}],
+        "booleanRule": {"condition": {"type": "TEXT_EQ", "values": [{"userEnteredValue": level.SENIOR_PLUS}]},
+                        "format": {"backgroundColor": {"red": 1.0, "green": 0.76, "blue": 0.4}}}}}}]
+
+
+def ensure_level_format(sh, offers_ws):
+    meta = sh.fetch_sheet_metadata(params={"fields": "sheets(properties(sheetId),conditionalFormats)"})
+    sheet = next(s for s in meta["sheets"] if s["properties"]["sheetId"] == offers_ws.id)
+    reqs = level_format_requests(offers_ws.id, sheet.get("conditionalFormats", []))
+    if reqs:
+        sh.batch_update({"requests": reqs})
+
+
 def check_layout(ws):
     """Zatrzymuje zapis, gdy nagłówki Ofert nie pasują do HEADERS (np. przed migracją): dane trafiłyby do złych kolumn."""
     headers = ws.row_values(1)
@@ -162,9 +190,9 @@ def check_layout(ws):
 
 
 def migration_requests(headers: list[str], sheet_id: int) -> list[dict]:
-    """Kroki zmiany układu: usuń Alert, "Widełki / forma" zaraz za Match, "Kontakt" zaraz za Widełkami.
-    Liczy je z aktualnych nagłówków, więc jest idempotentna i dokańcza układ pośredni. Zmienia wyłącznie
-    strukturę kolumn (deleteDimension / moveDimension), więc ręcznie wpisane dane zostają. Niezgodny wynik
+    """Kroki zmiany układu: usuń Alert, wstaw pustą kolumnę "Poziom" zaraz za Match, "Widełki / forma" zaraz za Poziomem,
+    "Kontakt" zaraz za Widełkami. Liczy je z aktualnych nagłówków, więc jest idempotentna i dokańcza układ pośredni.
+    Zmienia wyłącznie strukturę kolumn (deleteDimension / insertDimension / moveDimension), więc ręcznie wpisane dane zostają. Niezgodny wynik
     (np. obca kolumna) = ValueError, zanim cokolwiek zostanie zmienione."""
     h, reqs = list(headers), []
 
@@ -176,6 +204,11 @@ def migration_requests(headers: list[str], sheet_id: int) -> list[dict]:
         reqs.append({"deleteDimension": {"range": dim(i)}})
         h.pop(i)
 
+    if "Poziom" not in h and "Match" in h:
+        i = h.index("Match") + 1
+        reqs.append({"insertDimension": {"range": dim(i), "inheritFromBefore": False}})
+        h.insert(i, "Poziom")
+
     def place_after(name, anchor):
         if name not in h or anchor not in h:
             return
@@ -186,7 +219,7 @@ def migration_requests(headers: list[str], sheet_id: int) -> list[dict]:
         if i != p:                                  # destinationIndex liczony na układzie sprzed przeniesienia
             reqs.append({"moveDimension": {"source": dim(i), "destinationIndex": p if i > p else p + 1}})
 
-    place_after("Widełki / forma", "Match")
+    place_after("Widełki / forma", "Poziom")
     place_after("Kontakt", "Widełki / forma")
     if h != HEADERS:
         raise ValueError(f"Po migracji nagłówki nie pasują do nowego układu. Są: {headers} -> {h}")
@@ -214,18 +247,61 @@ def migrate(sh, cfg, today: str | None = None):
         views = next(x for x in meta["sheets"] if x["properties"]["sheetId"] == ws.id).get("filterViews", [])
         stale = [{"deleteFilterView": {"filterId": v["filterViewId"]}} for v in views if v["title"] in FILTER_VIEW_TITLES]
         sh.batch_update({"requests": stale + reqs})       # widoki mają stare indeksy kolumn: wracają z init()
+        if "Poziom" not in ws.row_values(1):               # insertDimension wstawia pustą kolumnę: nagłówek dopisujemy od razu
+            i = HEADERS.index("Poziom") + 1
+            ws.update_cell(1, i, "Poziom")
         print(f"Migracja: {len(reqs)} operacji na kolumnach, usunięto {len(stale)} widoków filtrów.")
         init(sh, cfg)
         refresh_mirror(sh, ws, sheet_locale(sh))
     headers = ws.row_values(1)
     if headers != HEADERS:
         raise RuntimeError(f"Nagłówki Ofert po migracji: {headers}")
+    backfill_levels(sh, cfg, ws)
     print("Oferty, nagłówki:", headers)
     print("Oferty, 3 pierwsze wiersze:")
     for row in ws.get(f"A2:{gspread.utils.rowcol_to_a1(1, len(HEADERS)).rstrip('0123456789')}4"):
         print("  ", row)
     mirror = sh.worksheet(MIRROR_TAB)
     print("Aplikowane, nagłówki:", mirror.row_values(1))
+
+
+def level_backfill(rows: list[list[str]], descriptions: dict[str, str], cfg_level: dict) -> list[tuple[int, str, str | None]]:
+    """Dla wierszy Ofert (bez nagłówka) z pustym Poziomem: (numer wiersza w arkuszu, poziom, nowe Notatki albo None).
+    Poziom z opisu zapisanego w _opisy (po Kluczu) i tytułu; wiersz bez opisu dostaje "?". Powód oceny jest dopisywany
+    do istniejących Notatek. Wiersze z już wpisanym Poziomem (także poprawionym ręcznie) zostają nietknięte."""
+    out = []
+    for n, r in enumerate(rows, start=2):
+        r = r + [""] * len(HEADERS)
+        if r[COL["Poziom"]].strip() or not (r[COL["Firma"]].strip() or r[COL["Stanowisko"]].strip()):
+            continue
+        desc = descriptions.get(r[COL["Klucz"]], "")
+        if not desc.strip():
+            out.append((n, level.UNKNOWN, None))
+            continue
+        a = level.assess(r[COL["Stanowisko"]], desc, [], cfg_level)
+        old = r[COL["Notatki"]].strip()
+        note = f"{old}. {a.note}" if old and a.note else (a.note or None)
+        out.append((n, a.level, note))
+    return out
+
+
+def backfill_levels(sh, cfg, ws):
+    """Uzupełnia puste komórki Poziomu w istniejących wierszach (tylko kolumny Poziom i Notatki, osobnymi zakresami)."""
+    rows = ws.get_all_values()[1:]
+    updates = level_backfill(rows, read_descriptions(sh, cfg), cfg["level"])
+    if not updates:
+        print("Poziom: brak pustych komórek do uzupełnienia.")
+        return
+    lvl_col = gspread.utils.rowcol_to_a1(1, COL["Poziom"] + 1).rstrip("0123456789")
+    note_col = gspread.utils.rowcol_to_a1(1, COL["Notatki"] + 1).rstrip("0123456789")
+    data = []
+    for n, lvl, note in updates:
+        data.append({"range": f"{lvl_col}{n}", "values": [[lvl]]})
+        if note is not None:
+            data.append({"range": f"{note_col}{n}", "values": [[note]]})
+    ws.batch_update(data, value_input_option="RAW")
+    from collections import Counter
+    print("Poziom: uzupełniono", len(updates), "wierszy:", dict(Counter(u[1] for u in updates)))
 
 
 BACKUP_PREFIX = "Oferty_backup_"
@@ -264,10 +340,14 @@ def init(sh, cfg, skills_csv="skills.csv"):
                                         "showCustomUi": True, "strict": False}}},
         {"repeatCell": {"range": {"sheetId": sid, "startRowIndex": 1, "startColumnIndex": COL["Match"], "endColumnIndex": COL["Match"] + 1},
                         "cell": {"userEnteredFormat": {"numberFormat": {"type": "PERCENT", "pattern": "0%"}}}, "fields": "userEnteredFormat.numberFormat"}},
+        {"setDataValidation": {"range": {"sheetId": sid, "startRowIndex": 1, "startColumnIndex": COL["Poziom"], "endColumnIndex": COL["Poziom"] + 1},
+                               "rule": {"condition": {"type": "ONE_OF_LIST", "values": [{"userEnteredValue": v} for v in level.LEVELS]},
+                                        "showCustomUi": True, "strict": True}}},
         {"updateDimensionProperties": {"range": {"sheetId": sid, "dimension": "COLUMNS", "startIndex": COL["Klucz"], "endIndex": COL["Klucz"] + 1},
                                        "properties": {"hiddenByUser": True}, "fields": "hiddenByUser"}},
     ]})
 
+    ensure_level_format(sh, ws)
     ensure_descriptions_tab(sh, cfg)
     ensure_sources_tab(sh, cfg)
     ensure_filter_views(sh, ws)
@@ -391,6 +471,7 @@ def offer_row(o, today: str) -> list:
     row[COL["Link"]] = o.url
     row[COL["Status"]] = "Do wysłania"
     row[COL["Match"]] = round(o.match, 2) if o.match is not None else ""
+    row[COL["Poziom"]] = getattr(o, "level", "")
     row[COL["Widełki / forma"]] = o.salary_text()
     row[COL["Luki"]] = ", ".join(o.gaps)
     row[COL["Dopisz do CV"]] = ", ".join(o.add_to_cv)

@@ -79,7 +79,7 @@ def fetch(session) -> list[Offer]:
                 company=pick(it, "companyName", default="?"), title=pick(it, "title", default="?"),
                 remote=(wt == "remote") if wt else None,
                 location=", ".join(dict.fromkeys(c for c in cities if c)) or pick(it, "city", default=""),
-                contract=contracts, pay=pays,
+                contract=contracts, pay=pays, seniority=pick(it, "experienceLevel", default=""),
                 description=" ".join([pick(it, "title", default="")] + skills),
             ))
         nxt = pick(data, "meta.next.cursor")

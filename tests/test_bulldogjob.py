@@ -37,3 +37,7 @@ def test_employment_offer_with_salary_is_labeled_uop():
 def test_listing_without_next_data_is_an_error():
     with pytest.raises(ValueError):
         parse_listing("<html>Just a moment...</html>")
+
+
+def test_portal_experience_level_is_kept():
+    assert sorted(o.seniority[0] for o in offers().values()) == ["lead", "medium", "medium", "senior"]

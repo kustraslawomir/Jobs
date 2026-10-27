@@ -58,7 +58,7 @@ def to_offer(item: dict) -> Offer | None:
         source="bulldogjob", source_id=str(oid), url=OFFER_URL.format(id=oid),
         company=(item.get("company") or {}).get("name") or "?", title=item.get("position") or "?",
         remote=remote if isinstance(remote, bool) else None, location=item.get("city") or "",
-        contract=contracts, pay=_pay(item, contracts),
+        contract=contracts, pay=_pay(item, contracts), seniority=item.get("experienceLevel") or "",
         description=" ".join([item.get("position") or ""] + list(item.get("technologyTags") or [])),
     )
 

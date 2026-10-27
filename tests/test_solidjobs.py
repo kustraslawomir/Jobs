@@ -34,3 +34,8 @@ def test_internship_is_rejected_by_contract_filter():
     item = dict(JOBS[2], title="Android Developer Internship")
     o = to_offer(item)
     assert o.contract == ["Staż"] and passes_filters(o, F, {"PLN": 1}) == "forma współpracy"
+
+
+def test_portal_experience_level_is_kept():
+    assert [to_offer(j).seniority for j in JOBS[:2]] != [[], []]
+    assert to_offer(JOBS[0]).seniority == [JOBS[0]["experienceLevel"]]

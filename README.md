@@ -30,7 +30,7 @@ export GOOGLE_SA_JSON="$(cat klucz.json)"
 export SHEET_ID=...
 python main.py --init
 ```
-Tworzy zakładki **Oferty** (17 kolumn A–Q, lista statusów, widoki filtrów, ukryta kolumna Klucz), **Aplikowane** (lustro wysłanych ofert), **Źródła**, ukrytą **_opisy** i **Słownik** (89 skilli). W Słowniku ustaw „Mam?” przy żółtych pozycjach „Do weryfikacji”, bo do tego czasu liczą się jako braki.
+Tworzy zakładki **Oferty** (18 kolumn A–R, lista statusów i poziomów, widoki filtrów, ukryta kolumna Klucz), **Aplikowane** (lustro wysłanych ofert), **Źródła**, ukrytą **_opisy** i **Słownik** (89 skilli). W Słowniku ustaw „Mam?” przy żółtych pozycjach „Do weryfikacji”, bo do tego czasu liczą się jako braki.
 
 ### 5. Sprawdzenie źródeł (WAŻNE)
 Portale nie mają oficjalnego API, więc adresy i pola w `sources/*.py` to ich wewnętrzne endpointy strony i **trzeba je zweryfikować**:
@@ -46,6 +46,7 @@ Potem: zakładka **Actions → Zbieranie ofert → Run workflow**, żeby odpali�
   1. to samo ID z portalu (kolumna Klucz),
   2. ta sama firma (po normalizacji: bez „sp. z o.o.”, polskich znaków itd.) i podobny tytuł (fuzzy ≥ 90) z innego portalu,
   3. agencje: tylko notatka „ustal klienta”, decyzja należy do Ciebie.
+- **Poziom** (`level.py`, sekcja `level` w `config.yaml`): Mid / Senior / Senior+ / ?. Kolejność sygnałów: pole poziomu z API portalu, tytuł (mid/regular, senior), wymagane lata w opisie (≤ 4 Mid, 5–7 Senior, 8+ Senior+), potem lista sygnałów podbijających Senior do Senior+ (mentoring, architektura, system design, live coding, LeetCode, zadanie domowe, 4+ etapy). Konflikt = wyższy poziom, brak sygnałów = „?”. Powód trafia do Notatek („Poziom: 8+ lat, system design”). Role liderskie (lead, staff, principal, architect, head, manager, director, lider, kierownik) odsiewa filtr tytułów. Kolumnę można poprawić ręcznie (lista rozwijana); widok „Do przejrzenia” chowa Senior+.
 - **ATS**: słownik czytany z zakładki Słownik, CV z `cv.txt`. Wynik trafia do kolumn Match, Luki i Dopisz do CV.
 - Wiersze w arkuszu możesz edytować i sortować dowolnie. Skrypt tylko dopisuje na dole i nigdy nie nadpisuje.
 
@@ -102,11 +103,12 @@ Niektóre portale (teraz czyjesteldorado.pl) blokują adresy IP serwerowni GitHu
 
 ## Układ kolumn Ofert i migracja
 
-Kolejność kolumn (A–Q): Dodano, Firma, Stanowisko, Link, Status, Wysłano CV, Rozmowa, Następny krok, Termin, Match, Widełki / forma, Kontakt, Luki, Dopisz do CV, Notatki, Źródło, Klucz (ukryta). Kolumny Alert już nie ma.
+Kolejność kolumn (A–R): Dodano, Firma, Stanowisko, Link, Status, Wysłano CV, Rozmowa, Następny krok, Termin, Match, Poziom, Widełki / forma, Kontakt, Luki, Dopisz do CV, Notatki, Źródło, Klucz (ukryta). Kolumny Alert już nie ma.
 
 Skrypt nie zapisuje do arkusza, którego nagłówki Ofert różnią się od tego układu (zatrzymuje się z błędem), żeby dane nie trafiły do złych kolumn. Stary arkusz przestawia tryb **migrate** (Actions → Run workflow → `migrate`, lokalnie `python main.py --migrate`):
 - robi kopię zakładki jako `Oferty_backup_<data>`,
-- zmienia tylko strukturę kolumn (usunięcie Alert, przeniesienie Widełek i Kontaktu), nie przepisuje danych, więc ręczne wpisy zostają,
+- zmienia tylko strukturę kolumn (usunięcie Alert, wstawienie pustej kolumny Poziom przez insertDimension, przeniesienie Widełek i Kontaktu), nie przepisuje danych, więc ręczne wpisy zostają,
+- uzupełnia puste komórki Poziomu na podstawie opisów z ukrytej zakładki _opisy (po Kluczu; brak opisu = „?”) i dopisuje powód do Notatek; komórki z już wpisanym Poziomem zostają,
 - jest idempotentna: w nowym układzie nic nie robi, w układzie pośrednim kończy brakujące kroki,
-- odtwarza widoki filtrów i odświeża Aplikowane.
+- odtwarza widoki filtrów (A:R), dodaje listę wartości i pomarańczowe tło dla Senior+ w kolumnie Poziom, odświeża Aplikowane (A:P).
 Kopię (`Oferty_backup_*`) usuń ręcznie po sprawdzeniu arkusza.
