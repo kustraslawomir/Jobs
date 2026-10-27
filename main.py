@@ -8,6 +8,7 @@ import argparse
 import csv
 import datetime as dt
 import os
+import re
 import sys
 import requests
 import yaml
@@ -15,17 +16,31 @@ import yaml
 import ats
 from dedup import Deduper, looks_like_agency
 from sources import REGISTRY
-from sources import nofluffjobs
+from sources import justjoinit, nofluffjobs
 
-DETAILS = {"nofluffjobs": nofluffjobs.details if nofluffjobs.FETCH_DETAILS else None}
+DETAILS = {"nofluffjobs": nofluffjobs.details if nofluffjobs.FETCH_DETAILS else None,
+           "justjoinit": justjoinit.details}
+
+
+def _has_word(title: str, word: str) -> bool:
+    return re.search(rf"(?<!\w){re.escape(word)}(?!\w)", title) is not None
+
+
+def title_reason(title: str, f) -> str | None:
+    t = title.lower()
+    in_scope = (any(k in t for k in f["title_require_any"])
+                or (any(k in t for k in f["title_mobile_words"]) and any(k in t for k in f["title_dev_words"])))
+    if not in_scope:
+        return "tytuł spoza zakresu"
+    if any(_has_word(t, k) for k in f["title_exclude"]):
+        return "wykluczone słowo w tytule"
+    return None
 
 
 def passes_filters(o, f, fx) -> str | None:
-    t = o.title.lower()
-    if not any(k in t for k in f["title_any"]):
-        return "tytuł spoza zakresu"
-    if any(k in t for k in f["title_exclude"]):
-        return "wykluczone słowo w tytule"
+    reason = title_reason(o.title, f)
+    if reason:
+        return reason
     if f.get("remote_only") and o.remote is not True:
         return "nie remote"
     top = o.salary_to_pln_month(fx)
