@@ -264,6 +264,9 @@ def init(sh, cfg, skills_csv="skills.csv"):
             {"updateSheetProperties": {"properties": {"sheetId": sk.id, "gridProperties": {"frozenRowCount": 1}}, "fields": "gridProperties.frozenRowCount"}},
         ]})
     drop_empty_default_sheets(sh)
+    mirror = sh.worksheet(MIRROR_TAB)
+    print("Aplikowane A1:O2:", mirror.get("A1:O2"), "| formuły:", mirror.get("A1:A2", value_render_option="FORMULA"),
+          "| kolumn:", mirror.col_count)
     return ws
 
 
