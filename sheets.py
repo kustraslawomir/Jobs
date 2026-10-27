@@ -16,20 +16,24 @@ SOURCE_HEADERS = ["Źródło", "Data", "Pobrane", "Nowe", "Błąd"]
 SKILL_HEADERS = ["Kategoria", "Keyword", "Wariant 2", "Wariant 3", "Wariant 4", "Mam?", "Waga 1-3", "Komentarz"]
 
 
-def alert_formula(followup_days: int, soon_days: int) -> str:
-    """Jedna formuła w nagłówku liczy alerty dla całej kolumny (odporna na sortowanie i ręczne wiersze)."""
-    g = "IFERROR(INT(G2:G),0)"
-    t = "IFERROR(INT(I2:I),0)"
-    f = "IFERROR(INT(F2:F),0)"
+def alert_formula(followup_days: int, soon_days: int, sep: str = ",") -> str:
+    """Jedna formuła w nagłówku liczy alerty dla całej kolumny (odporna na sortowanie i ręczne wiersze).
+    `sep` to separator argumentów funkcji zgodny z locale arkusza (";" dla pl_PL, "," dla en_US).
+    Separator wierszy w literale tablicowym {"Alert"; ARRAYFORMULA(...)} to ";" w obu locale (w pl_PL kolumny
+    rozdziela "\\", ale tu układamy tylko wiersze jeden pod drugim)."""
+    g = "IFERROR(INT(G2:G)§0)"
+    t = "IFERROR(INT(I2:I)§0)"
+    f = "IFERROR(INT(F2:F)§0)"
     closed = '(E2:E="Przyjęta")+(E2:E="Odrzucone")+(E2:E="Rezygnacja")+(E2:E="Ghosting")'
-    return (
-        '={"Alert";ARRAYFORMULA(IF(B2:B="","",IF(' + closed + '>0,"",'
-        f'IF(({g}>0)*({g}=TODAY()),"Rozmowa dziś",'
-        f'IF(({g}>TODAY())*({g}-TODAY()<={soon_days}),"Rozmowa wkrótce",'
-        f'IF(({t}>0)*({t}<=TODAY()),"Termin!",'
-        f'IF((E2:E="Wysłane")*({f}>0)*(TODAY()-{f}>={followup_days}),"Follow-up",'
-        'IF(E2:E="Do wysłania","Wyślij CV","")))))))}'
+    template = (
+        '={"Alert";ARRAYFORMULA(IF(B2:B=""§""§IF(' + closed + '>0§""§'
+        f'IF(({g}>0)*({g}=TODAY())§"Rozmowa dziś"§'
+        f'IF(({g}>TODAY())*({g}-TODAY()<={soon_days})§"Rozmowa wkrótce"§'
+        f'IF(({t}>0)*({t}<=TODAY())§"Termin!"§'
+        f'IF((E2:E="Wysłane")*({f}>0)*(TODAY()-{f}>={followup_days})§"Follow-up"§'
+        'IF(E2:E="Do wysłania"§"Wyślij CV"§"")))))))}'
     )
+    return template.replace("§", sep)
 
 
 def connect():
@@ -45,6 +49,25 @@ def mirror_formulas(sep: str) -> tuple[str, str]:
     a2 = ('=IFERROR(SORT(FILTER(Oferty!A2:P{s}Oferty!E2:E<>""{s}Oferty!E2:E<>"Do wysłania"{s}'
           'Oferty!E2:E<>"Rezygnacja"){s}6{s}FALSE){s}"Jeszcze nic nie wysłane")').format(s=sep)
     return a1, a2
+
+
+def sheet_locale(sh) -> str:
+    return sh.fetch_sheet_metadata(params={"fields": "properties.locale"})["properties"]["locale"]
+
+
+def is_blank(values) -> bool:
+    return not any(str(c).strip() for row in values for c in row)
+
+
+def drop_empty_default_sheets(sh):
+    """Usuwa domyślną pustą zakładkę ("Arkusz1" / "Sheet1"); jeśli zawiera cokolwiek, zostaje."""
+    for ws in sh.worksheets():
+        if ws.title in ("Arkusz1", "Sheet1") and len(sh.worksheets()) > 1:
+            if is_blank(ws.get_all_values()):
+                sh.del_worksheet(ws)
+                print(f"Usunięto pustą zakładkę {ws.title!r}.")
+            else:
+                print(f"Zakładka {ws.title!r} ma dane, zostaje.")
 
 
 def arg_separator(locale: str) -> str:
@@ -117,7 +140,9 @@ def init(sh, cfg, skills_csv="skills.csv"):
     ws = sh.worksheet(s["tab_offers"]) if s["tab_offers"] in titles else sh.add_worksheet(s["tab_offers"], 1000, len(HEADERS))
     if not ws.row_values(1):
         ws.update(range_name="A1", values=[HEADERS])
-    ws.update(range_name="J1", values=[[alert_formula(s["followup_days"], s["soon_days"])]], value_input_option="USER_ENTERED")
+    locale = sheet_locale(sh)
+    sep = arg_separator(locale)
+    ws.update(range_name="J1", values=[[alert_formula(s["followup_days"], s["soon_days"], sep)]], value_input_option="USER_ENTERED")
 
     sid = ws.id
     sh.batch_update({"requests": [
@@ -139,7 +164,6 @@ def init(sh, cfg, skills_csv="skills.csv"):
     ensure_descriptions_tab(sh, cfg)
     ensure_sources_tab(sh, cfg)
     ensure_filter_views(sh, ws)
-    locale = sh.fetch_sheet_metadata(params={"fields": "properties.locale"})["properties"]["locale"]
     ensure_mirror_tab(sh, ws, locale)
 
     if s["tab_skills"] not in titles:
@@ -153,6 +177,8 @@ def init(sh, cfg, skills_csv="skills.csv"):
                                             "showCustomUi": True}}},
             {"updateSheetProperties": {"properties": {"sheetId": sk.id, "gridProperties": {"frozenRowCount": 1}}, "fields": "gridProperties.frozenRowCount"}},
         ]})
+    drop_empty_default_sheets(sh)
+    print(f"Oferty!J1:J5 (locale {locale}, separator '{sep}'):", ws.get("J1:J5"))
     return ws
 
 
