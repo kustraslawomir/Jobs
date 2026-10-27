@@ -23,12 +23,20 @@ sources:
   nofluffjobs: true
 
 dedup:
-  # podobieństwo tytułów (0-100) przy tej samej firmie, od którego uznajemy duplikat
-  fuzzy_title_threshold: 90
+  # tytuły (0-100): pewny duplikat przy tej samej firmie / możliwy duplikat przy tej samej firmie / minimum dla porównania treści
+  title_sure: 90
+  title_possible: 75
+  title_content: 70
+  # podobieństwo treści (Jaccard 0-1): pewny duplikat / możliwy duplikat
+  content_sure: 0.90
+  content_possible: 0.60
+  # zgodność nazw firm po normalizacji (rapidfuzz ratio)
+  company_ratio: 92
 
 sheet:
   tab_offers: "Oferty"
   tab_skills: "Słownik"
+  tab_descriptions: "_opisy"
   followup_days: 7
   soon_days: 2
 

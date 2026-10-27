@@ -40,3 +40,12 @@ class Offer:
             return None
         v = self.salary_to * fx.get(self.currency.upper(), 1)
         return {"hour": v * 168, "year": v / 12}.get(self.salary_period, v)
+
+    def salary_range_pln(self, fx: dict) -> tuple[float, float] | None:
+        """Przedział widełek w PLN/miesiąc (do porównywania ofert); None = brak widełek."""
+        lo, hi = self.salary_from or self.salary_to, self.salary_to or self.salary_from
+        if lo is None or hi is None:
+            return None
+        k = fx.get(self.currency.upper(), 1)
+        mult = {"hour": 168, "year": 1 / 12}.get(self.salary_period, 1)
+        return lo * k * mult, hi * k * mult

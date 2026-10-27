@@ -61,6 +61,8 @@ def init(sh, cfg, skills_csv="skills.csv"):
                                        "properties": {"hiddenByUser": True}, "fields": "hiddenByUser"}},
     ]})
 
+    ensure_descriptions_tab(sh, cfg)
+
     if s["tab_skills"] not in titles:
         sk = sh.add_worksheet(s["tab_skills"], 300, len(SKILL_HEADERS))
         with open(skills_csv, encoding="utf-8") as f:
@@ -75,6 +77,32 @@ def init(sh, cfg, skills_csv="skills.csv"):
     return ws
 
 
+def ensure_descriptions_tab(sh, cfg):
+    """Ukryta zakładka "_opisy": klucz | znormalizowany opis. Idempotentna, nie rusza istniejących danych."""
+    name = cfg["sheet"]["tab_descriptions"]
+    try:
+        return sh.worksheet(name)
+    except gspread.WorksheetNotFound:
+        ws = sh.add_worksheet(name, 1000, 2)
+        ws.update(range_name="A1", values=[["Klucz", "Opis (znormalizowany, max 20 000 znaków)"]])
+        sh.batch_update({"requests": [{"updateSheetProperties": {
+            "properties": {"sheetId": ws.id, "hidden": True}, "fields": "hidden"}}]})
+        return ws
+
+
+def read_descriptions(sh, cfg) -> dict[str, str]:
+    try:
+        rows = sh.worksheet(cfg["sheet"]["tab_descriptions"]).get_all_values()[1:]
+    except gspread.WorksheetNotFound:
+        return {}
+    return {r[0]: r[1] for r in rows if len(r) > 1 and r[0]}
+
+
+def append_descriptions(sh, cfg, items: list[tuple[str, str]]):
+    if items:
+        ensure_descriptions_tab(sh, cfg).append_rows([list(i) for i in items], value_input_option="RAW")
+
+
 def read_skills(sh, cfg):
     return sh.worksheet(cfg["sheet"]["tab_skills"]).get_all_values()[1:]
 
@@ -84,7 +112,7 @@ def read_existing(ws):
     out = []
     for r in rows:
         r = r + [""] * len(HEADERS)
-        out.append((r[COL["Klucz"]], r[COL["Firma"]], r[COL["Stanowisko"]]))
+        out.append((r[COL["Klucz"]], r[COL["Firma"]], r[COL["Stanowisko"]], r[COL["Widełki / forma"]]))
     return out, len(rows) + 1   # ostatni zajęty wiersz
 
 
