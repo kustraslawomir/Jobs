@@ -228,6 +228,18 @@ def migrate(sh, cfg, today: str | None = None):
     print("Aplikowane, nagłówki:", mirror.row_values(1))
 
 
+BACKUP_PREFIX = "Oferty_backup_"
+
+
+def delete_backup(sh, name: str):
+    """Usuwa kopię zapasową zrobioną przez migrate. Dotyka wyłącznie zakładek o nazwie Oferty_backup_*."""
+    if not name.startswith(BACKUP_PREFIX):
+        raise ValueError(f"Odmowa: usuwam tylko zakładki {BACKUP_PREFIX}*, a podano {name!r}")
+    ws = sh.worksheet(name)
+    sh.del_worksheet(ws)
+    print(f"Usunięto zakładkę {name!r}. Zakładki teraz:", [w.title for w in sh.worksheets()])
+
+
 def init(sh, cfg, skills_csv="skills.csv"):
     """Zakładki, nagłówki, słownik, walidacja statusów, widoki filtrów, lustro. Idempotentne, nie nadpisuje danych.
     Stary układ kolumn Ofert wymaga najpierw migrate()."""
@@ -273,9 +285,6 @@ def init(sh, cfg, skills_csv="skills.csv"):
             {"updateSheetProperties": {"properties": {"sheetId": sk.id, "gridProperties": {"frozenRowCount": 1}}, "fields": "gridProperties.frozenRowCount"}},
         ]})
     drop_empty_default_sheets(sh)
-    mirror = sh.worksheet(MIRROR_TAB)
-    print("Aplikowane A1:O2:", mirror.get("A1:O2"), "| formuły:", mirror.get("A1:A2", value_render_option="FORMULA"),
-          "| kolumn:", mirror.col_count)
     return ws
 
 

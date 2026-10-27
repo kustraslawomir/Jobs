@@ -118,3 +118,24 @@ def test_offer_row_puts_values_in_the_new_columns():
     assert row[9] == 0.83 and row[10] == "B2B 20 000–25 000" and row[11] == "" and row[12] == "Java"
     assert row[13] == "Compose" and row[14] == "uwaga" and row[15] == "justjoinit" and row[16] == "justjoinit:1"
     assert row[4] == "Do wysłania" and row[0] == "2026-10-27"
+
+
+def test_delete_backup_refuses_anything_but_backup_tabs():
+    import pytest
+    deleted = []
+
+    class SH:
+        def worksheet(self, name):
+            return name
+
+        def worksheets(self):
+            return []
+
+        def del_worksheet(self, ws):
+            deleted.append(ws)
+    for name in ("Oferty", "Aplikowane", "Źródła", ""):
+        with pytest.raises(ValueError):
+            sheets.delete_backup(SH(), name)
+    assert deleted == []
+    sheets.delete_backup(SH(), "Oferty_backup_2026-10-27")
+    assert deleted == ["Oferty_backup_2026-10-27"]
