@@ -15,7 +15,7 @@ def test_new_offers_are_sorted_by_match_descending_with_empty_match_last():
 
 def test_mirror_formulas_use_semicolons_for_polish_locale():
     a1, a2 = sheets.mirror_formulas(sheets.arg_separator("pl_PL"))
-    assert a1 == "=Oferty!A1:O1"
+    assert a1 == "={Oferty!A1:O1}"
     assert a2 == ('=IFERROR(SORT(FILTER(Oferty!A2:O;Oferty!E2:E<>"";Oferty!E2:E<>"Do wysłania";'
                   'Oferty!E2:E<>"Rezygnacja");6;FALSE);"Jeszcze nic nie wysłane")')
 

@@ -25,7 +25,7 @@ def connect():
 def mirror_formulas(sep: str) -> tuple[str, str]:
     """Formuły lustra Ofert: bez wierszy "Do wysłania", "Rezygnacja" i pustych, najpierw ostatnio wysłane (kol. F, "Wysłano CV").
     `sep` to separator argumentów: ";" dla arkuszy z polskim (i innym europejskim) locale, "," dla en_US."""
-    a1 = "=Oferty!A1:O1"
+    a1 = "={Oferty!A1:O1}"          # goła referencja pokazałaby tylko A1; literał tablicowy rozlewa się na 15 kolumn
     a2 = ('=IFERROR(SORT(FILTER(Oferty!A2:O{s}Oferty!E2:E<>""{s}Oferty!E2:E<>"Do wysłania"{s}'
           'Oferty!E2:E<>"Rezygnacja"){s}6{s}FALSE){s}"Jeszcze nic nie wysłane")').format(s=sep)
     return a1, a2
@@ -102,9 +102,18 @@ def write_mirror_formulas(ws, sep: str):
     ws.update(range_name="A2", values=[[a2]], value_input_option="USER_ENTERED")
 
 
+def sync_mirror_formulas(ws, sep: str):
+    """Lustro jest tylko do odczytu, więc jego formuły wolno poprawić, gdy odbiegają od wzorca."""
+    current = [r[0] if r else "" for r in ws.get("A1:A2", value_render_option="FORMULA")]
+    if current != list(mirror_formulas(sep)):
+        write_mirror_formulas(ws, sep)
+        print("Aplikowane: formuły A1:A2 zaktualizowane.")
+
+
 def ensure_mirror_tab(sh, offers_ws, locale: str):
     """Zakładka "Aplikowane": tylko do odczytu lustro Ofert. Tworzona raz; istniejącej nie ruszamy."""
     if MIRROR_TAB in [w.title for w in sh.worksheets()]:
+        sync_mirror_formulas(sh.worksheet(MIRROR_TAB), arg_separator(locale))
         return None
     sep = arg_separator(locale)
     ws = sh.add_worksheet(MIRROR_TAB, 1000, MIRROR_COLS)
