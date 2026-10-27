@@ -30,7 +30,7 @@ export GOOGLE_SA_JSON="$(cat klucz.json)"
 export SHEET_ID=...
 python main.py --init
 ```
-Tworzy zakładki **Oferty** (nagłówki, lista statusów, alerty liczone formułą, ukryta kolumna Klucz) i **Słownik** (89 skilli). W Słowniku ustaw „Mam?” przy żółtych pozycjach „Do weryfikacji”, bo do tego czasu liczą się jako braki.
+Tworzy zakładki **Oferty** (17 kolumn A–Q, lista statusów, widoki filtrów, ukryta kolumna Klucz), **Aplikowane** (lustro wysłanych ofert), **Źródła**, ukrytą **_opisy** i **Słownik** (89 skilli). W Słowniku ustaw „Mam?” przy żółtych pozycjach „Do weryfikacji”, bo do tego czasu liczą się jako braki.
 
 ### 5. Sprawdzenie źródeł (WAŻNE)
 Portale nie mają oficjalnego API, więc adresy i pola w `sources/*.py` to ich wewnętrzne endpointy strony i **trzeba je zweryfikować**:
@@ -47,7 +47,6 @@ Potem: zakładka **Actions → Zbieranie ofert → Run workflow**, żeby odpali�
   2. ta sama firma (po normalizacji: bez „sp. z o.o.”, polskich znaków itd.) i podobny tytuł (fuzzy ≥ 90) z innego portalu,
   3. agencje: tylko notatka „ustal klienta”, decyzja należy do Ciebie.
 - **ATS**: słownik czytany z zakładki Słownik, CV z `cv.txt`. Wynik trafia do kolumn Match, Luki i Dopisz do CV.
-- **Alerty** liczy formuła w nagłówku kolumny Alert, więc działają też dla wierszy dopisanych ręcznie.
 - Wiersze w arkuszu możesz edytować i sortować dowolnie. Skrypt tylko dopisuje na dole i nigdy nie nadpisuje.
 
 ## Utrzymanie
@@ -100,3 +99,14 @@ Niektóre portale (teraz czyjesteldorado.pl) blokują adresy IP serwerowni GitHu
 - Logi runów: `gh run list --workflow=scrape-local.yml`.
 - Zatrzymanie / odinstalowanie: `./svc.sh stop`, `./svc.sh uninstall`.
 - Venv z zależnościami leży w katalogu roboczym runnera (`_work/Jobs/.venv`), nie w systemowym Pythonie.
+
+## Układ kolumn Ofert i migracja
+
+Kolejność kolumn (A–Q): Dodano, Firma, Stanowisko, Link, Status, Wysłano CV, Rozmowa, Następny krok, Termin, Match, Widełki / forma, Kontakt, Luki, Dopisz do CV, Notatki, Źródło, Klucz (ukryta). Kolumny Alert już nie ma.
+
+Skrypt nie zapisuje do arkusza, którego nagłówki Ofert różnią się od tego układu (zatrzymuje się z błędem), żeby dane nie trafiły do złych kolumn. Stary arkusz przestawia tryb **migrate** (Actions → Run workflow → `migrate`, lokalnie `python main.py --migrate`):
+- robi kopię zakładki jako `Oferty_backup_<data>`,
+- zmienia tylko strukturę kolumn (usunięcie Alert, przeniesienie Widełek i Kontaktu), nie przepisuje danych, więc ręczne wpisy zostają,
+- jest idempotentna: w nowym układzie nic nie robi, w układzie pośrednim kończy brakujące kroki,
+- odtwarza widoki filtrów i odświeża Aplikowane.
+Kopię (`Oferty_backup_*`) usuń ręcznie po sprawdzeniu arkusza.

@@ -5,35 +5,15 @@ import os
 import gspread
 
 HEADERS = ["Dodano", "Firma", "Stanowisko", "Link", "Status", "Wysłano CV", "Rozmowa",
-           "Następny krok", "Termin", "Alert", "Match", "Luki", "Dopisz do CV",
-           "Kontakt", "Widełki / forma", "Notatki", "Źródło", "Klucz"]
+           "Następny krok", "Termin", "Match", "Widełki / forma", "Kontakt", "Luki", "Dopisz do CV",
+           "Notatki", "Źródło", "Klucz"]
 COL = {h: i for i, h in enumerate(HEADERS)}           # 0-based
 STATUSES = ["Do wysłania", "Wysłane", "Odpowiedź", "Rozmowa", "Zadanie domowe", "Oferta",
             "Przyjęta", "Odrzucone", "Rezygnacja", "Ghosting"]
 MIRROR_TAB = "Aplikowane"
-MIRROR_COLS = 16                 # A:P z Ofert (bez Źródło i Klucz)
+MIRROR_COLS = 15                 # A:O z Ofert (do Notatek, bez Źródło i Klucz)
 SOURCE_HEADERS = ["Źródło", "Data", "Pobrane", "Nowe", "Błąd"]
 SKILL_HEADERS = ["Kategoria", "Keyword", "Wariant 2", "Wariant 3", "Wariant 4", "Mam?", "Waga 1-3", "Komentarz"]
-
-
-def alert_formula(followup_days: int, soon_days: int, sep: str = ",") -> str:
-    """Jedna formuła w nagłówku liczy alerty dla całej kolumny (odporna na sortowanie i ręczne wiersze).
-    `sep` to separator argumentów funkcji zgodny z locale arkusza (";" dla pl_PL, "," dla en_US).
-    Separator wierszy w literale tablicowym {"Alert"; ARRAYFORMULA(...)} to ";" w obu locale (w pl_PL kolumny
-    rozdziela "\\", ale tu układamy tylko wiersze jeden pod drugim)."""
-    g = "IFERROR(INT(G2:G)§0)"
-    t = "IFERROR(INT(I2:I)§0)"
-    f = "IFERROR(INT(F2:F)§0)"
-    closed = '(E2:E="Przyjęta")+(E2:E="Odrzucone")+(E2:E="Rezygnacja")+(E2:E="Ghosting")'
-    template = (
-        '={"Alert";ARRAYFORMULA(IF(B2:B=""§""§IF(' + closed + '>0§""§'
-        f'IF(({g}>0)*({g}=TODAY())§"Rozmowa dziś"§'
-        f'IF(({g}>TODAY())*({g}-TODAY()<={soon_days})§"Rozmowa wkrótce"§'
-        f'IF(({t}>0)*({t}<=TODAY())§"Termin!"§'
-        f'IF((E2:E="Wysłane")*({f}>0)*(TODAY()-{f}>={followup_days})§"Follow-up"§'
-        'IF(E2:E="Do wysłania"§"Wyślij CV"§""))))))))}'
-    )
-    return template.replace("§", sep)
 
 
 def connect():
@@ -43,10 +23,10 @@ def connect():
 
 
 def mirror_formulas(sep: str) -> tuple[str, str]:
-    """Formuły lustra Ofert: bez wierszy "Do wysłania", "Rezygnacja" i pustych, najpierw ostatnio wysłane (kol. F).
+    """Formuły lustra Ofert: bez wierszy "Do wysłania", "Rezygnacja" i pustych, najpierw ostatnio wysłane (kol. F, "Wysłano CV").
     `sep` to separator argumentów: ";" dla arkuszy z polskim (i innym europejskim) locale, "," dla en_US."""
-    a1 = "=Oferty!A1:P1"
-    a2 = ('=IFERROR(SORT(FILTER(Oferty!A2:P{s}Oferty!E2:E<>""{s}Oferty!E2:E<>"Do wysłania"{s}'
+    a1 = "=Oferty!A1:O1"
+    a2 = ('=IFERROR(SORT(FILTER(Oferty!A2:O{s}Oferty!E2:E<>""{s}Oferty!E2:E<>"Do wysłania"{s}'
           'Oferty!E2:E<>"Rezygnacja"){s}6{s}FALSE){s}"Jeszcze nic nie wysłane")').format(s=sep)
     return a1, a2
 
@@ -81,8 +61,11 @@ def header_request(sheet_id: int) -> dict:
                            "fields": "userEnteredFormat(textFormat,backgroundColor,wrapStrategy)"}}
 
 
+FILTER_VIEW_TITLES = ("Do przejrzenia", "Najnowsze")
+
+
 def filter_view_requests(sheet_id: int, existing_titles) -> list[dict]:
-    """Widoki filtrów na całych kolumnach A:R zakładki Oferty; pomija te, które już istnieją (po nazwie)."""
+    """Widoki filtrów na całych kolumnach A:Q zakładki Oferty; pomija te, które już istnieją (po nazwie)."""
     rng = {"sheetId": sheet_id, "startColumnIndex": 0, "endColumnIndex": len(HEADERS)}
     views = [
         ("Do przejrzenia", {"sortSpecs": [{"dimensionIndex": COL["Match"], "sortOrder": "DESCENDING"}],
@@ -94,20 +77,15 @@ def filter_view_requests(sheet_id: int, existing_titles) -> list[dict]:
             for title, spec in views if title not in set(existing_titles)]
 
 
-def ensure_mirror_tab(sh, offers_ws, locale: str):
-    """Zakładka "Aplikowane": tylko do odczytu lustro Ofert. Tworzona raz; istniejącej nie ruszamy."""
-    if MIRROR_TAB in [w.title for w in sh.worksheets()]:
-        return None
-    sep = arg_separator(locale)
-    ws = sh.add_worksheet(MIRROR_TAB, 1000, MIRROR_COLS)
-    a1, a2 = mirror_formulas(sep)
-    ws.update(range_name="A1", values=[[a1]], value_input_option="USER_ENTERED")
-    ws.update(range_name="A2", values=[[a2]], value_input_option="USER_ENTERED")
-    sid = ws.id
-    sh.batch_update({"requests": [
-        {"updateSheetProperties": {"properties": {"sheetId": sid, "index": offers_ws.index + 1,
-                                                  "gridProperties": {"frozenRowCount": 1, "frozenColumnCount": 2}},
-                                   "fields": "index,gridProperties.frozenRowCount,gridProperties.frozenColumnCount"}},
+def mirror_format_requests(sid: int, offers_index: int | None = None) -> list[dict]:
+    """Formatowanie lustra: nagłówek jak w Ofertach, zamrożony 1 wiersz i 2 kolumny, F jako data, Match jako procent."""
+    props = {"sheetId": sid, "gridProperties": {"frozenRowCount": 1, "frozenColumnCount": 2}}
+    fields = "gridProperties.frozenRowCount,gridProperties.frozenColumnCount"
+    if offers_index is not None:
+        props["index"] = offers_index + 1               # zaraz po Ofertach
+        fields = "index," + fields
+    return [
+        {"updateSheetProperties": {"properties": props, "fields": fields}},
         header_request(sid),
         {"repeatCell": {"range": {"sheetId": sid, "startRowIndex": 1, "startColumnIndex": COL["Wysłano CV"], "endColumnIndex": COL["Wysłano CV"] + 1},
                         "cell": {"userEnteredFormat": {"numberFormat": {"type": "DATE", "pattern": "yyyy-mm-dd"}}},
@@ -115,10 +93,43 @@ def ensure_mirror_tab(sh, offers_ws, locale: str):
         {"repeatCell": {"range": {"sheetId": sid, "startRowIndex": 1, "startColumnIndex": COL["Match"], "endColumnIndex": COL["Match"] + 1},
                         "cell": {"userEnteredFormat": {"numberFormat": {"type": "PERCENT", "pattern": "0%"}}},
                         "fields": "userEnteredFormat.numberFormat"}},
-        {"addProtectedRange": {"protectedRange": {"range": {"sheetId": sid}, "warningOnly": True,
+    ]
+
+
+def write_mirror_formulas(ws, sep: str):
+    a1, a2 = mirror_formulas(sep)
+    ws.update(range_name="A1", values=[[a1]], value_input_option="USER_ENTERED")
+    ws.update(range_name="A2", values=[[a2]], value_input_option="USER_ENTERED")
+
+
+def ensure_mirror_tab(sh, offers_ws, locale: str):
+    """Zakładka "Aplikowane": tylko do odczytu lustro Ofert. Tworzona raz; istniejącej nie ruszamy."""
+    if MIRROR_TAB in [w.title for w in sh.worksheets()]:
+        return None
+    sep = arg_separator(locale)
+    ws = sh.add_worksheet(MIRROR_TAB, 1000, MIRROR_COLS)
+    write_mirror_formulas(ws, sep)
+    sh.batch_update({"requests": mirror_format_requests(ws.id, offers_ws.index) + [
+        {"addProtectedRange": {"protectedRange": {"range": {"sheetId": ws.id}, "warningOnly": True,
                                                   "description": "Lustro – edytuj w zakładce Oferty"}}},
     ]})
     print(f"Aplikowane: utworzona (locale {locale}, separator '{sep}'), A2 = {ws.acell('A2').value!r}")
+    return ws
+
+
+def refresh_mirror(sh, offers_ws, locale: str):
+    """Po zmianie układu Ofert: przepisuje formuły lustra (A:O), zwęża je do 15 kolumn i przestawia formaty."""
+    ws = ensure_mirror_tab(sh, offers_ws, locale)
+    if ws is not None:
+        return ws
+    ws = sh.worksheet(MIRROR_TAB)
+    write_mirror_formulas(ws, arg_separator(locale))
+    sh.batch_update({"requests": [
+        {"updateSheetProperties": {"properties": {"sheetId": ws.id, "gridProperties": {"columnCount": MIRROR_COLS}},
+                                   "fields": "gridProperties.columnCount"}},
+        {"repeatCell": {"range": {"sheetId": ws.id, "startRowIndex": 1},          # czyścimy stare formaty liczb
+                        "cell": {"userEnteredFormat": {}}, "fields": "userEnteredFormat.numberFormat"}},
+    ] + mirror_format_requests(ws.id)})
     return ws
 
 
@@ -133,16 +144,91 @@ def ensure_filter_views(sh, offers_ws):
     print("Widoki filtrów w Ofertach:", [v["title"] for v in sheet.get("filterViews", [])])
 
 
+def check_layout(ws):
+    """Zatrzymuje zapis, gdy nagłówki Ofert nie pasują do HEADERS (np. przed migracją): dane trafiłyby do złych kolumn."""
+    headers = ws.row_values(1)
+    if headers and headers != HEADERS:
+        raise RuntimeError("Układ kolumn zakładki Oferty jest inny niż oczekiwany (uruchom tryb migrate). "
+                           f"Jest: {headers}")
+
+
+def migration_requests(headers: list[str], sheet_id: int) -> list[dict]:
+    """Kroki zmiany układu: usuń Alert, "Widełki / forma" zaraz za Match, "Kontakt" zaraz za Widełkami.
+    Liczy je z aktualnych nagłówków, więc jest idempotentna i dokańcza układ pośredni. Zmienia wyłącznie
+    strukturę kolumn (deleteDimension / moveDimension), więc ręcznie wpisane dane zostają. Niezgodny wynik
+    (np. obca kolumna) = ValueError, zanim cokolwiek zostanie zmienione."""
+    h, reqs = list(headers), []
+
+    def dim(i):
+        return {"sheetId": sheet_id, "dimension": "COLUMNS", "startIndex": i, "endIndex": i + 1}
+
+    if "Alert" in h:
+        i = h.index("Alert")
+        reqs.append({"deleteDimension": {"range": dim(i)}})
+        h.pop(i)
+
+    def place_after(name, anchor):
+        if name not in h or anchor not in h:
+            return
+        i = h.index(name)
+        h.pop(i)
+        p = h.index(anchor) + 1                     # docelowa pozycja po przeniesieniu
+        h.insert(p, name)
+        if i != p:                                  # destinationIndex liczony na układzie sprzed przeniesienia
+            reqs.append({"moveDimension": {"source": dim(i), "destinationIndex": p if i > p else p + 1}})
+
+    place_after("Widełki / forma", "Match")
+    place_after("Kontakt", "Widełki / forma")
+    if h != HEADERS:
+        raise ValueError(f"Po migracji nagłówki nie pasują do nowego układu. Są: {headers} -> {h}")
+    return reqs
+
+
+def migrate(sh, cfg, today: str | None = None):
+    """Migracja zakładki Oferty do układu HEADERS: kopia zapasowa, zmiana kolumn, odświeżenie widoków i lustra."""
+    import datetime as dt
+    today = today or dt.date.today().isoformat()
+    ws = sh.worksheet(cfg["sheet"]["tab_offers"])
+    reqs = migration_requests(ws.row_values(1), ws.id)
+    if not reqs:
+        print("Migracja: nagłówki Ofert są już w nowym układzie, nic do zrobienia.")
+    else:
+        titles = {w.title for w in sh.worksheets()}
+        name = f"Oferty_backup_{today}"
+        n = 2
+        while name in titles:
+            name = f"Oferty_backup_{today}_{n}"
+            n += 1
+        ws.duplicate(new_sheet_name=name)
+        print(f"Kopia zapasowa: {name}")
+        meta = sh.fetch_sheet_metadata(params={"fields": "sheets(properties(sheetId),filterViews(title,filterViewId))"})
+        views = next(x for x in meta["sheets"] if x["properties"]["sheetId"] == ws.id).get("filterViews", [])
+        stale = [{"deleteFilterView": {"filterId": v["filterViewId"]}} for v in views if v["title"] in FILTER_VIEW_TITLES]
+        sh.batch_update({"requests": stale + reqs})       # widoki mają stare indeksy kolumn: wracają z init()
+        print(f"Migracja: {len(reqs)} operacji na kolumnach, usunięto {len(stale)} widoków filtrów.")
+        init(sh, cfg)
+        refresh_mirror(sh, ws, sheet_locale(sh))
+    headers = ws.row_values(1)
+    if headers != HEADERS:
+        raise RuntimeError(f"Nagłówki Ofert po migracji: {headers}")
+    print("Oferty, nagłówki:", headers)
+    print("Oferty, 3 pierwsze wiersze:")
+    for row in ws.get(f"A2:{gspread.utils.rowcol_to_a1(1, len(HEADERS)).rstrip('0123456789')}4"):
+        print("  ", row)
+    mirror = sh.worksheet(MIRROR_TAB)
+    print("Aplikowane, nagłówki:", mirror.row_values(1))
+
+
 def init(sh, cfg, skills_csv="skills.csv"):
-    """Jednorazowo: zakładki, nagłówki, słownik, walidacja statusów. Nie nadpisuje danych."""
+    """Zakładki, nagłówki, słownik, walidacja statusów, widoki filtrów, lustro. Idempotentne, nie nadpisuje danych.
+    Stary układ kolumn Ofert wymaga najpierw migrate()."""
     s = cfg["sheet"]
     titles = [w.title for w in sh.worksheets()]
     ws = sh.worksheet(s["tab_offers"]) if s["tab_offers"] in titles else sh.add_worksheet(s["tab_offers"], 1000, len(HEADERS))
+    check_layout(ws)
     if not ws.row_values(1):
         ws.update(range_name="A1", values=[HEADERS])
     locale = sheet_locale(sh)
-    sep = arg_separator(locale)
-    ws.update(range_name="J1", values=[[alert_formula(s["followup_days"], s["soon_days"], sep)]], value_input_option="USER_ENTERED")
 
     sid = ws.id
     sh.batch_update({"requests": [
@@ -178,7 +264,6 @@ def init(sh, cfg, skills_csv="skills.csv"):
             {"updateSheetProperties": {"properties": {"sheetId": sk.id, "gridProperties": {"frozenRowCount": 1}}, "fields": "gridProperties.frozenRowCount"}},
         ]})
     drop_empty_default_sheets(sh)
-    print(f"Oferty!J1:J5 (locale {locale}, separator '{sep}'):", ws.get("J1:J5"))
     return ws
 
 
@@ -277,32 +362,32 @@ def sort_by_match(offers):
     return sorted(offers, key=lambda o: (o.match is None, -(o.match or 0)))
 
 
+def offer_row(o, today: str) -> list:
+    row = [""] * len(HEADERS)
+    row[COL["Dodano"]] = today
+    row[COL["Firma"]] = o.company
+    row[COL["Stanowisko"]] = o.title
+    row[COL["Link"]] = o.url
+    row[COL["Status"]] = "Do wysłania"
+    row[COL["Match"]] = round(o.match, 2) if o.match is not None else ""
+    row[COL["Widełki / forma"]] = o.salary_text()
+    row[COL["Luki"]] = ", ".join(o.gaps)
+    row[COL["Dopisz do CV"]] = ", ".join(o.add_to_cv)
+    row[COL["Notatki"]] = getattr(o, "note", "")
+    row[COL["Źródło"]] = o.source
+    row[COL["Klucz"]] = o.key
+    return row
+
+
 def append_offers(ws, offers, today: str, last_row: int):
     """Dopisuje nowe oferty (od najwyższego matchu) i zwraca je w kolejności zapisu."""
     if not offers:
         return []
+    check_layout(ws)                                  # nigdy nie zapisujemy do arkusza w starym układzie kolumn
     offers = sort_by_match(offers)
-    rows = []
-    for o in offers:
-        row = [""] * len(HEADERS)
-        row[COL["Dodano"]] = today
-        row[COL["Firma"]] = o.company
-        row[COL["Stanowisko"]] = o.title
-        row[COL["Link"]] = o.url
-        row[COL["Status"]] = "Do wysłania"
-        row[COL["Match"]] = round(o.match, 2) if o.match is not None else ""
-        row[COL["Luki"]] = ", ".join(o.gaps)
-        row[COL["Dopisz do CV"]] = ", ".join(o.add_to_cv)
-        row[COL["Widełki / forma"]] = o.salary_text()
-        row[COL["Notatki"]] = getattr(o, "note", "")
-        row[COL["Źródło"]] = o.source
-        row[COL["Klucz"]] = o.key
-        rows.append(row)
     start = last_row + 1
-    # kolumna J zostaje pusta (liczy ją ARRAYFORMULA z nagłówka)
-    left = [r[:COL["Alert"]] for r in rows]
-    right = [r[COL["Alert"] + 1:] for r in rows]
-    end = start + len(rows) - 1
-    ws.update(range_name=f"A{start}:I{end}", values=left, value_input_option="USER_ENTERED")
-    ws.update(range_name=f"K{start}:R{end}", values=right, value_input_option="USER_ENTERED")
+    end = start + len(offers) - 1
+    last_col = gspread.utils.rowcol_to_a1(1, len(HEADERS)).rstrip("0123456789")
+    ws.update(range_name=f"A{start}:{last_col}{end}", values=[offer_row(o, today) for o in offers],
+              value_input_option="USER_ENTERED")
     return offers

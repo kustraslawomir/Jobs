@@ -46,8 +46,6 @@ sheet:
   tab_skills: "Słownik"
   tab_descriptions: "_opisy"
   tab_sources: "Źródła"
-  followup_days: 7
-  soon_days: 2
 
 notify:
   # Telegram: ustaw sekrety TELEGRAM_TOKEN i TELEGRAM_CHAT_ID, inaczej pomija

@@ -8,7 +8,7 @@ on:
       mode:
         description: "Tryb"
         type: choice
-        options: [run, init, dry-run]
+        options: [run, init, dry-run, migrate]
         default: run
 
 concurrency:
@@ -35,6 +35,7 @@ jobs:
         run: |
           case "${{ inputs.mode || 'run' }}" in
             init)    python main.py --init ;;
+            migrate) python main.py --migrate ;;
             dry-run) python main.py --dry-run --runner cloud ;;
             *)       python main.py --runner cloud ;;
           esac

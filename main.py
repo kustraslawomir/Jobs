@@ -96,6 +96,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--init", action="store_true")
     ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--migrate", action="store_true", help="przestaw kolumny zakładki Oferty do nowego układu")
     ap.add_argument("--runner", choices=["cloud", "local"],
                     help="zbieraj tylko źródła przypisane do tego runnera (bez flagi: wszystkie)")
     args = ap.parse_args()
@@ -110,11 +111,16 @@ def main():
     else:
         import sheets
         sh = sheets.connect()
+        if args.migrate:
+            sheets.migrate(sh, cfg)
+            print("Migracja zakończona.")
+            return
         if args.init:
             sheets.init(sh, cfg)
             print("Arkusz gotowy.")
             return
         ws = sh.worksheet(cfg["sheet"]["tab_offers"])
+        sheets.check_layout(ws)
         skill_rows = sheets.read_skills(sh, cfg)
         existing, last_row = sheets.read_existing(ws)
         descriptions = sheets.read_descriptions(sh, cfg)
