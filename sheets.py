@@ -165,9 +165,15 @@ def read_existing(ws):
     return out, len(rows) + 1   # ostatni zajęty wiersz
 
 
+def sort_by_match(offers):
+    """Match malejąco, oferty z pustym matchem na końcu (kolejność wśród równych zachowana)."""
+    return sorted(offers, key=lambda o: (o.match is None, -(o.match or 0)))
+
+
 def append_offers(ws, offers, today: str, last_row: int):
     if not offers:
         return
+    offers = sort_by_match(offers)
     rows = []
     for o in offers:
         row = [""] * len(HEADERS)
