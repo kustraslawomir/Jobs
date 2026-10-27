@@ -10,6 +10,8 @@ HEADERS = ["Dodano", "Firma", "Stanowisko", "Link", "Status", "Wysłano CV", "Ro
 COL = {h: i for i, h in enumerate(HEADERS)}           # 0-based
 STATUSES = ["Do wysłania", "Wysłane", "Odpowiedź", "Rozmowa", "Zadanie domowe", "Oferta",
             "Przyjęta", "Odrzucone", "Rezygnacja", "Ghosting"]
+MIRROR_TAB = "Aplikowane"
+MIRROR_COLS = 16                 # A:P z Ofert (bez Źródło i Klucz)
 SOURCE_HEADERS = ["Źródło", "Data", "Pobrane", "Nowe", "Błąd"]
 SKILL_HEADERS = ["Kategoria", "Keyword", "Wariant 2", "Wariant 3", "Wariant 4", "Mam?", "Waga 1-3", "Komentarz"]
 
@@ -34,6 +36,78 @@ def connect():
     creds = json.loads(os.environ["GOOGLE_SA_JSON"])
     gc = gspread.service_account_from_dict(creds)
     return gc.open_by_key(os.environ["SHEET_ID"])
+
+
+def mirror_formulas(sep: str) -> tuple[str, str]:
+    """Formuły lustra Ofert: bez wierszy "Do wysłania", "Rezygnacja" i pustych, najpierw ostatnio wysłane (kol. F).
+    `sep` to separator argumentów: ";" dla arkuszy z polskim (i innym europejskim) locale, "," dla en_US."""
+    a1 = "=Oferty!A1:P1"
+    a2 = ('=IFERROR(SORT(FILTER(Oferty!A2:P{s}Oferty!E2:E<>""{s}Oferty!E2:E<>"Do wysłania"{s}'
+          'Oferty!E2:E<>"Rezygnacja"){s}6{s}FALSE){s}"Jeszcze nic nie wysłane")').format(s=sep)
+    return a1, a2
+
+
+def arg_separator(locale: str) -> str:
+    return ";" if (locale or "").lower().startswith("pl") else ","
+
+
+def header_request(sheet_id: int) -> dict:
+    return {"repeatCell": {"range": {"sheetId": sheet_id, "startRowIndex": 0, "endRowIndex": 1},
+                           "cell": {"userEnteredFormat": {"textFormat": {"bold": True, "foregroundColor": {"red": 1, "green": 1, "blue": 1}},
+                                                          "backgroundColor": {"red": 0.12, "green": 0.31, "blue": 0.47}, "wrapStrategy": "WRAP"}},
+                           "fields": "userEnteredFormat(textFormat,backgroundColor,wrapStrategy)"}}
+
+
+def filter_view_requests(sheet_id: int, existing_titles) -> list[dict]:
+    """Widoki filtrów na całych kolumnach A:R zakładki Oferty; pomija te, które już istnieją (po nazwie)."""
+    rng = {"sheetId": sheet_id, "startColumnIndex": 0, "endColumnIndex": len(HEADERS)}
+    views = [
+        ("Do przejrzenia", {"sortSpecs": [{"dimensionIndex": COL["Match"], "sortOrder": "DESCENDING"}],
+                            "criteria": {str(COL["Status"]): {"condition": {"type": "TEXT_EQ",
+                                                                            "values": [{"userEnteredValue": "Do wysłania"}]}}}}),
+        ("Najnowsze", {"sortSpecs": [{"dimensionIndex": COL["Dodano"], "sortOrder": "DESCENDING"}]}),
+    ]
+    return [{"addFilterView": {"filter": {"title": title, "range": rng, **spec}}}
+            for title, spec in views if title not in set(existing_titles)]
+
+
+def ensure_mirror_tab(sh, offers_ws, locale: str):
+    """Zakładka "Aplikowane": tylko do odczytu lustro Ofert. Tworzona raz; istniejącej nie ruszamy."""
+    if MIRROR_TAB in [w.title for w in sh.worksheets()]:
+        return None
+    sep = arg_separator(locale)
+    ws = sh.add_worksheet(MIRROR_TAB, 1000, MIRROR_COLS)
+    a1, a2 = mirror_formulas(sep)
+    ws.update(range_name="A1", values=[[a1]], value_input_option="USER_ENTERED")
+    ws.update(range_name="A2", values=[[a2]], value_input_option="USER_ENTERED")
+    sid = ws.id
+    sh.batch_update({"requests": [
+        {"updateSheetProperties": {"properties": {"sheetId": sid, "index": offers_ws.index + 1,
+                                                  "gridProperties": {"frozenRowCount": 1, "frozenColumnCount": 2}},
+                                   "fields": "index,gridProperties.frozenRowCount,gridProperties.frozenColumnCount"}},
+        header_request(sid),
+        {"repeatCell": {"range": {"sheetId": sid, "startRowIndex": 1, "startColumnIndex": COL["Wysłano CV"], "endColumnIndex": COL["Wysłano CV"] + 1},
+                        "cell": {"userEnteredFormat": {"numberFormat": {"type": "DATE", "pattern": "yyyy-mm-dd"}}},
+                        "fields": "userEnteredFormat.numberFormat"}},
+        {"repeatCell": {"range": {"sheetId": sid, "startRowIndex": 1, "startColumnIndex": COL["Match"], "endColumnIndex": COL["Match"] + 1},
+                        "cell": {"userEnteredFormat": {"numberFormat": {"type": "PERCENT", "pattern": "0%"}}},
+                        "fields": "userEnteredFormat.numberFormat"}},
+        {"addProtectedRange": {"protectedRange": {"range": {"sheetId": sid}, "warningOnly": True,
+                                                  "description": "Lustro – edytuj w zakładce Oferty"}}},
+    ]})
+    print(f"Aplikowane: utworzona (locale {locale}, separator '{sep}'), A2 = {ws.acell('A2').value!r}")
+    return ws
+
+
+def ensure_filter_views(sh, offers_ws):
+    meta = sh.fetch_sheet_metadata(params={"fields": "sheets(properties(sheetId),filterViews(title))"})
+    sheet = next(s for s in meta["sheets"] if s["properties"]["sheetId"] == offers_ws.id)
+    reqs = filter_view_requests(offers_ws.id, [v["title"] for v in sheet.get("filterViews", [])])
+    if reqs:
+        sh.batch_update({"requests": reqs})
+    meta = sh.fetch_sheet_metadata(params={"fields": "sheets(properties(sheetId),filterViews(title))"})
+    sheet = next(s for s in meta["sheets"] if s["properties"]["sheetId"] == offers_ws.id)
+    print("Widoki filtrów w Ofertach:", [v["title"] for v in sheet.get("filterViews", [])])
 
 
 def init(sh, cfg, skills_csv="skills.csv"):
@@ -64,6 +138,9 @@ def init(sh, cfg, skills_csv="skills.csv"):
 
     ensure_descriptions_tab(sh, cfg)
     ensure_sources_tab(sh, cfg)
+    ensure_filter_views(sh, ws)
+    locale = sh.fetch_sheet_metadata(params={"fields": "properties.locale"})["properties"]["locale"]
+    ensure_mirror_tab(sh, ws, locale)
 
     if s["tab_skills"] not in titles:
         sk = sh.add_worksheet(s["tab_skills"], 300, len(SKILL_HEADERS))
