@@ -8,7 +8,7 @@ on:
       mode:
         description: "Tryb"
         type: choice
-        options: [run, init, dry-run, migrate, delete-backup]
+        options: [run, init, dry-run, migrate, report, delete-backup]
         default: run
       backup:
         description: "Nazwa kopii zapasowej do usunięcia (tryb delete-backup)"
@@ -41,6 +41,7 @@ jobs:
           case "${{ inputs.mode || 'run' }}" in
             init)    python main.py --init ;;
             migrate) python main.py --migrate ;;
+            report)  python main.py --report ;;
             delete-backup) python main.py --delete-backup "$BACKUP_NAME" ;;
             dry-run) python main.py --dry-run --runner cloud ;;
             *)       python main.py --runner cloud ;;

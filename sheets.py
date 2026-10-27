@@ -1,5 +1,6 @@
 """Google Sheets: odczyt słownika i istniejących ofert, dopisywanie nowych."""
 import csv
+import re
 import json
 import os
 import gspread
@@ -362,6 +363,32 @@ def backfill_columns(sh, cfg, ws):
     from collections import Counter
     print("Poziom: uzupełniono", len(levels), "wierszy:", dict(Counter(u[1] for u in levels)))
     print("AI: uzupełniono", len(ais), "wierszy:", dict(Counter(v.split(" (")[0] for _, v in ais)))
+
+
+def report(sh, cfg):
+    """Tylko odczyt: rozkład Poziomów, przykłady Senior+, wszystkie oferty z AI i trafienia samym "ai" (do przeglądu fałszywych alarmów)."""
+    from collections import Counter
+    ws = sh.worksheet(cfg["sheet"]["tab_offers"])
+    rows = [r + [""] * len(HEADERS) for r in ws.get_all_values()[1:]]
+    rows = [r for r in rows if r[COL["Firma"]] or r[COL["Stanowisko"]]]
+    desc = read_descriptions(sh, cfg)
+    print("Nagłówki Ofert:", ws.row_values(1))
+    print(f"Wierszy: {len(rows)}; rozkład Poziomów:", dict(Counter(r[COL["Poziom"]] or "(puste)" for r in rows)))
+    print("Przykłady Senior+ (do 5):")
+    for r in [r for r in rows if r[COL["Poziom"]] == level.SENIOR_PLUS][:5]:
+        print(f"  {r[COL['Firma']]} – {r[COL['Stanowisko']]} | {r[COL['Notatki']]}")
+    ai_rows = sorted((r for r in rows if r[COL["AI"]].strip()), key=lambda r: -float((r[COL["Match"]] or "0").rstrip("%").replace(",", ".") or 0))
+    print(f"Oferty z AI: {len(ai_rows)}")
+    for r in ai_rows:
+        print(f"  {r[COL['Firma']]} – {r[COL['Stanowisko']]} – {r[COL['Match']] or '–'} – {r[COL['AI']]}")
+    bare = [r for r in ai_rows if ai_flag.only_bare_ai(r[COL["AI"]], r[COL["Stanowisko"]], desc.get(r[COL["Klucz"]], ""), cfg["ai"])]
+    print(f"Trafienia samym \"ai\": {len(bare)}")
+    for r in bare:
+        text = " " + level.normalize(f"{r[COL['Stanowisko']]} {desc.get(r[COL['Klucz']], '')}") + " "
+        ctx = [text[max(0, m.start() - 45):m.end() + 45].strip() for m in re.finditer(r"(?<![a-z0-9])ais?(?![a-z0-9])", text)][:3]
+        print(f"  {r[COL['Firma']]} – {r[COL['Stanowisko']]} – {r[COL['Match']] or '–'}")
+        for c in ctx:
+            print(f"      …{c}…")
 
 
 BACKUP_PREFIX = "Oferty_backup_"

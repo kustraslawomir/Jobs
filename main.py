@@ -99,6 +99,7 @@ def main():
     ap.add_argument("--init", action="store_true")
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--delete-backup", metavar="NAZWA", help="usuń kopię zapasową Oferty_backup_* po migracji")
+    ap.add_argument("--report", action="store_true", help="tylko odczyt: poziomy, oferty z AI, trafienia samym \"ai\"")
     ap.add_argument("--migrate", action="store_true", help="przestaw kolumny zakładki Oferty do nowego układu")
     ap.add_argument("--runner", choices=["cloud", "local"],
                     help="zbieraj tylko źródła przypisane do tego runnera (bez flagi: wszystkie)")
@@ -116,6 +117,9 @@ def main():
         sh = sheets.connect()
         if args.delete_backup:
             sheets.delete_backup(sh, args.delete_backup)
+            return
+        if args.report:
+            sheets.report(sh, cfg)
             return
         if args.migrate:
             sheets.migrate(sh, cfg)
