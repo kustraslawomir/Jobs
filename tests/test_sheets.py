@@ -42,14 +42,14 @@ def test_alert_formula_for_polish_locale_uses_semicolons_everywhere():
     assert f.startswith('={"Alert";ARRAYFORMULA(IF(B2:B="";"";IF(')
     assert "," not in f and "§" not in f
     assert 'IFERROR(INT(G2:G);0)' in f and '<=2);"Rozmowa wkrótce"' in f and '>=7);"Follow-up"' in f
-    assert f.endswith('IF(E2:E="Do wysłania";"Wyślij CV";"")))))))}')
+    assert f.endswith('IF(E2:E="Do wysłania";"Wyślij CV";""))))))))}')
 
 
 def test_alert_formula_for_en_us_uses_commas_and_only_the_array_row_separator_is_a_semicolon():
     f = sheets.alert_formula(7, 2, sheets.arg_separator("en_US"))
     assert f.startswith('={"Alert";ARRAYFORMULA(IF(B2:B="","",IF(')
     assert f.count(";") == 1 and "§" not in f
-    assert f.endswith('IF(E2:E="Do wysłania","Wyślij CV","")))))))}')
+    assert f.endswith('IF(E2:E="Do wysłania","Wyślij CV",""))))))))}')
 
 
 def test_alert_formula_default_separator_is_a_comma():
@@ -59,3 +59,10 @@ def test_alert_formula_default_separator_is_a_comma():
 def test_blank_sheet_detection():
     assert sheets.is_blank([]) and sheets.is_blank([["", ""], [" "]])
     assert not sheets.is_blank([["", ""], ["", "x"]])
+
+
+def test_alert_formula_has_balanced_brackets_in_both_locales():
+    # brakujący ")" daje #ERROR! w API (interfejs Arkuszy domyka go sam, więc błąd łatwo przeoczyć)
+    for sep in (",", ";"):
+        f = sheets.alert_formula(7, 2, sep)
+        assert f.count("(") == f.count(")") and f.count("{") == f.count("}")

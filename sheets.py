@@ -31,7 +31,7 @@ def alert_formula(followup_days: int, soon_days: int, sep: str = ",") -> str:
         f'IF(({g}>TODAY())*({g}-TODAY()<={soon_days})§"Rozmowa wkrótce"§'
         f'IF(({t}>0)*({t}<=TODAY())§"Termin!"§'
         f'IF((E2:E="Wysłane")*({f}>0)*(TODAY()-{f}>={followup_days})§"Follow-up"§'
-        'IF(E2:E="Do wysłania"§"Wyślij CV"§"")))))))}'
+        'IF(E2:E="Do wysłania"§"Wyślij CV"§""))))))))}'
     )
     return template.replace("§", sep)
 
