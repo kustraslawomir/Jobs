@@ -49,6 +49,7 @@ class Offer:
     n_req: int = 0                 # ile wymagań ze słownika rozpoznano w ofercie
     note: str = ""
     level: str = ""                # "Mid" | "Senior" | "Senior+" | "?" (level.py)
+    ai: str = ""                   # "produkt (llm)" / "workflow (...)" / "" (ai_flag.py)
 
     @property
     def key(self) -> str:

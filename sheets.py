@@ -4,10 +4,11 @@ import json
 import os
 import gspread
 
+import ai_flag
 import level
 
 HEADERS = ["Dodano", "Firma", "Stanowisko", "Link", "Status", "Wysłano CV", "Rozmowa",
-           "Następny krok", "Termin", "Match", "Poziom", "Widełki / forma", "Kontakt", "Luki", "Dopisz do CV",
+           "Następny krok", "Termin", "Match", "Poziom", "AI", "Widełki / forma", "Kontakt", "Luki", "Dopisz do CV",
            "Notatki", "Źródło", "Klucz"]
 COL = {h: i for i, h in enumerate(HEADERS)}           # 0-based
 STATUSES = ["Do wysłania", "Wysłane", "Odpowiedź", "Rozmowa", "Zadanie domowe", "Oferta",
@@ -64,7 +65,8 @@ def header_request(sheet_id: int) -> dict:
                            "fields": "userEnteredFormat(textFormat,backgroundColor,wrapStrategy)"}}
 
 
-FILTER_VIEW_TITLES = ("Do przejrzenia", "Najnowsze")
+CLOSED_STATUSES = ["Przyjęta", "Odrzucone", "Rezygnacja", "Ghosting"]      # proces zakończony
+FILTER_VIEW_TITLES = ("Do przejrzenia", "Najnowsze", "AI")
 
 
 def filter_view_requests(sheet_id: int, existing_titles) -> list[dict]:
@@ -77,6 +79,9 @@ def filter_view_requests(sheet_id: int, existing_titles) -> list[dict]:
                                                                             "values": [{"userEnteredValue": "Do wysłania"}]}},
                                          str(COL["Poziom"]): {"hiddenValues": [level.SENIOR_PLUS]}}}),
         ("Najnowsze", {"sortSpecs": [{"dimensionIndex": COL["Dodano"], "sortOrder": "DESCENDING"}]}),
+        ("AI", {"sortSpecs": [{"dimensionIndex": COL["Match"], "sortOrder": "DESCENDING"}],
+                "criteria": {str(COL["AI"]): {"condition": {"type": "NOT_BLANK"}},
+                             str(COL["Status"]): {"hiddenValues": CLOSED_STATUSES}}}),
     ]
     return [{"addFilterView": {"filter": {"title": title, "range": rng, **spec}}}
             for title, spec in views if title not in set(existing_titles)]
@@ -158,27 +163,63 @@ def ensure_filter_views(sh, offers_ws):
     print("Widoki filtrów w Ofertach:", [v["title"] for v in sheet.get("filterViews", [])])
 
 
-def level_format_requests(sheet_id: int, existing_rules: list[dict]) -> list[dict]:
-    """Formatowanie warunkowe: Poziom "Senior+" na pomarańczowo. Pomija, gdy taka reguła już jest na tej kolumnie."""
+def _col_letter(i: int) -> str:
+    return gspread.utils.rowcol_to_a1(1, i + 1).rstrip("0123456789")
+
+
+def _rule_mentions(rules: list[dict], *needles: str) -> bool:
+    return any(json.dumps(n, ensure_ascii=False)[1:-1] in json.dumps(r, ensure_ascii=False) for r in rules for n in needles)
+
+
+def format_requests(sheet_id: int, existing_rules: list[dict]) -> list[dict]:
+    """Formatowanie warunkowe Ofert, dokładane tylko gdy czegoś brakuje (idempotentne). Kolejność reguł = priorytet:
+    1) szarość zamkniętych statusów (jeśli w arkuszu nie ma takiej reguły, dodajemy ją na początku),
+    2) Poziom "Senior+" na pomarańczowo,
+    3) cały wiersz z niepustą kolumną AI na jasnofioletowo (na końcu, więc szarość i pomarańcz mają pierwszeństwo)."""
+    n = len(existing_rules)
+    reqs = []
+
+    def add(rule, at_start=False):
+        nonlocal n
+        reqs.append({"addConditionalFormatRule": {"index": 0 if at_start else n, "rule": rule}})
+        n += 1
+
+    width = len(HEADERS)
+    if not _rule_mentions(existing_rules, "Odrzucone", "Rezygnacja", "Ghosting"):
+        cond = ",".join(f'$E2="{s}"' for s in CLOSED_STATUSES)
+        add({"ranges": [{"sheetId": sheet_id, "startRowIndex": 1, "startColumnIndex": 0, "endColumnIndex": width}],
+             "booleanRule": {"condition": {"type": "CUSTOM_FORMULA", "values": [{"userEnteredValue": f"=OR({cond})"}]},
+                             "format": {"backgroundColor": {"red": 0.85, "green": 0.85, "blue": 0.85},
+                                        "textFormat": {"foregroundColor": {"red": 0.5, "green": 0.5, "blue": 0.5}}}}}, at_start=True)
     col = COL["Poziom"]
-    for rule in existing_rules:
-        cond = (rule.get("booleanRule") or {}).get("condition") or {}
-        vals = [v.get("userEnteredValue") for v in cond.get("values", [])]
-        if cond.get("type") == "TEXT_EQ" and vals == [level.SENIOR_PLUS] and any(
-                r.get("startColumnIndex") == col for r in rule.get("ranges", [])):
-            return []
-    return [{"addConditionalFormatRule": {"index": 0, "rule": {
-        "ranges": [{"sheetId": sheet_id, "startRowIndex": 1, "startColumnIndex": col, "endColumnIndex": col + 1}],
-        "booleanRule": {"condition": {"type": "TEXT_EQ", "values": [{"userEnteredValue": level.SENIOR_PLUS}]},
-                        "format": {"backgroundColor": {"red": 1.0, "green": 0.76, "blue": 0.4}}}}}}]
+    has_level = any(
+        (r.get("booleanRule") or {}).get("condition", {}).get("type") == "TEXT_EQ"
+        and [v.get("userEnteredValue") for v in r["booleanRule"]["condition"].get("values", [])] == [level.SENIOR_PLUS]
+        and any(x.get("startColumnIndex") == col for x in r.get("ranges", []))
+        for r in existing_rules)
+    if not has_level:
+        add({"ranges": [{"sheetId": sheet_id, "startRowIndex": 1, "startColumnIndex": col, "endColumnIndex": col + 1}],
+             "booleanRule": {"condition": {"type": "TEXT_EQ", "values": [{"userEnteredValue": level.SENIOR_PLUS}]},
+                             "format": {"backgroundColor": {"red": 1.0, "green": 0.76, "blue": 0.4}}}})
+    ai_formula = f'=${_col_letter(COL["AI"])}2<>""'
+    if not _rule_mentions(existing_rules, ai_formula):
+        add({"ranges": [{"sheetId": sheet_id, "startRowIndex": 1, "startColumnIndex": 0, "endColumnIndex": width}],
+             "booleanRule": {"condition": {"type": "CUSTOM_FORMULA", "values": [{"userEnteredValue": ai_formula}]},
+                             "format": {"backgroundColor": {"red": 0.91, "green": 0.87, "blue": 0.98}}}})
+    return reqs
 
 
-def ensure_level_format(sh, offers_ws):
+def ensure_formats(sh, offers_ws):
     meta = sh.fetch_sheet_metadata(params={"fields": "sheets(properties(sheetId),conditionalFormats)"})
     sheet = next(s for s in meta["sheets"] if s["properties"]["sheetId"] == offers_ws.id)
-    reqs = level_format_requests(offers_ws.id, sheet.get("conditionalFormats", []))
+    rules = sheet.get("conditionalFormats", [])
+    print("Formatowanie warunkowe Ofert, istniejące reguły:",
+          [(r.get("booleanRule", {}).get("condition", {}).get("type") or "gradient",
+            [v.get("userEnteredValue") for v in r.get("booleanRule", {}).get("condition", {}).get("values", [])]) for r in rules])
+    reqs = format_requests(offers_ws.id, rules)
     if reqs:
         sh.batch_update({"requests": reqs})
+    print(f"Formatowanie warunkowe Ofert: dodano {len(reqs)} reguł.")
 
 
 def check_layout(ws):
@@ -190,7 +231,7 @@ def check_layout(ws):
 
 
 def migration_requests(headers: list[str], sheet_id: int) -> list[dict]:
-    """Kroki zmiany układu: usuń Alert, wstaw pustą kolumnę "Poziom" zaraz za Match, "Widełki / forma" zaraz za Poziomem,
+    """Kroki zmiany układu: usuń Alert, wstaw puste kolumny "Poziom" zaraz za Match i "AI" zaraz za Poziomem, "Widełki / forma" zaraz za AI,
     "Kontakt" zaraz za Widełkami. Liczy je z aktualnych nagłówków, więc jest idempotentna i dokańcza układ pośredni.
     Zmienia wyłącznie strukturę kolumn (deleteDimension / insertDimension / moveDimension), więc ręcznie wpisane dane zostają. Niezgodny wynik
     (np. obca kolumna) = ValueError, zanim cokolwiek zostanie zmienione."""
@@ -204,10 +245,11 @@ def migration_requests(headers: list[str], sheet_id: int) -> list[dict]:
         reqs.append({"deleteDimension": {"range": dim(i)}})
         h.pop(i)
 
-    if "Poziom" not in h and "Match" in h:
-        i = h.index("Match") + 1
-        reqs.append({"insertDimension": {"range": dim(i), "inheritFromBefore": False}})
-        h.insert(i, "Poziom")
+    for name, anchor in (("Poziom", "Match"), ("AI", "Poziom")):       # puste kolumny wstawiane w tej kolejności
+        if name not in h and anchor in h:
+            i = h.index(anchor) + 1
+            reqs.append({"insertDimension": {"range": dim(i), "inheritFromBefore": False}})
+            h.insert(i, name)
 
     def place_after(name, anchor):
         if name not in h or anchor not in h:
@@ -219,7 +261,7 @@ def migration_requests(headers: list[str], sheet_id: int) -> list[dict]:
         if i != p:                                  # destinationIndex liczony na układzie sprzed przeniesienia
             reqs.append({"moveDimension": {"source": dim(i), "destinationIndex": p if i > p else p + 1}})
 
-    place_after("Widełki / forma", "Poziom")
+    place_after("Widełki / forma", "AI")
     place_after("Kontakt", "Widełki / forma")
     if h != HEADERS:
         raise ValueError(f"Po migracji nagłówki nie pasują do nowego układu. Są: {headers} -> {h}")
@@ -247,16 +289,17 @@ def migrate(sh, cfg, today: str | None = None):
         views = next(x for x in meta["sheets"] if x["properties"]["sheetId"] == ws.id).get("filterViews", [])
         stale = [{"deleteFilterView": {"filterId": v["filterViewId"]}} for v in views if v["title"] in FILTER_VIEW_TITLES]
         sh.batch_update({"requests": stale + reqs})       # widoki mają stare indeksy kolumn: wracają z init()
-        if "Poziom" not in ws.row_values(1):               # insertDimension wstawia pustą kolumnę: nagłówek dopisujemy od razu
-            i = HEADERS.index("Poziom") + 1
-            ws.update_cell(1, i, "Poziom")
+        row1 = ws.row_values(1)                            # insertDimension wstawia puste kolumny: nagłówki dopisujemy od razu
+        for i, name in enumerate(HEADERS):
+            if name in ("Poziom", "AI") and name not in row1:
+                ws.update_cell(1, i + 1, name)
         print(f"Migracja: {len(reqs)} operacji na kolumnach, usunięto {len(stale)} widoków filtrów.")
         init(sh, cfg)
         refresh_mirror(sh, ws, sheet_locale(sh))
     headers = ws.row_values(1)
     if headers != HEADERS:
         raise RuntimeError(f"Nagłówki Ofert po migracji: {headers}")
-    backfill_levels(sh, cfg, ws)
+    backfill_columns(sh, cfg, ws)
     print("Oferty, nagłówki:", headers)
     print("Oferty, 3 pierwsze wiersze:")
     for row in ws.get(f"A2:{gspread.utils.rowcol_to_a1(1, len(HEADERS)).rstrip('0123456789')}4"):
@@ -285,23 +328,39 @@ def level_backfill(rows: list[list[str]], descriptions: dict[str, str], cfg_leve
     return out
 
 
-def backfill_levels(sh, cfg, ws):
-    """Uzupełnia puste komórki Poziomu w istniejących wierszach (tylko kolumny Poziom i Notatki, osobnymi zakresami)."""
+def ai_backfill(rows: list[list[str]], descriptions: dict[str, str], cfg_ai: dict) -> list[tuple[int, str]]:
+    """Dla wierszy Ofert (bez nagłówka) z pustą kolumną AI i opisem w _opisy: (numer wiersza, wartość AI) tylko tam,
+    gdzie coś wykryto. Wypełnionych komórek (np. poprawionych ręcznie) nie ruszamy."""
+    out = []
+    for n, r in enumerate(rows, start=2):
+        r = r + [""] * len(HEADERS)
+        desc = descriptions.get(r[COL["Klucz"]], "")
+        if r[COL["AI"]].strip() or not desc.strip():
+            continue
+        value = ai_flag.detect(r[COL["Stanowisko"]], desc, cfg_ai)
+        if value:
+            out.append((n, value))
+    return out
+
+
+def backfill_columns(sh, cfg, ws):
+    """Uzupełnia puste komórki Poziomu i AI w istniejących wierszach (osobne zakresy, tylko kolumny Poziom, AI i Notatki)."""
     rows = ws.get_all_values()[1:]
-    updates = level_backfill(rows, read_descriptions(sh, cfg), cfg["level"])
-    if not updates:
-        print("Poziom: brak pustych komórek do uzupełnienia.")
-        return
-    lvl_col = gspread.utils.rowcol_to_a1(1, COL["Poziom"] + 1).rstrip("0123456789")
-    note_col = gspread.utils.rowcol_to_a1(1, COL["Notatki"] + 1).rstrip("0123456789")
+    descriptions = read_descriptions(sh, cfg)
+    levels = level_backfill(rows, descriptions, cfg["level"])
+    ais = ai_backfill(rows, descriptions, cfg["ai"])
     data = []
-    for n, lvl, note in updates:
-        data.append({"range": f"{lvl_col}{n}", "values": [[lvl]]})
+    for n, lvl, note in levels:
+        data.append({"range": f"{_col_letter(COL['Poziom'])}{n}", "values": [[lvl]]})
         if note is not None:
-            data.append({"range": f"{note_col}{n}", "values": [[note]]})
-    ws.batch_update(data, value_input_option="RAW")
+            data.append({"range": f"{_col_letter(COL['Notatki'])}{n}", "values": [[note]]})
+    for n, value in ais:
+        data.append({"range": f"{_col_letter(COL['AI'])}{n}", "values": [[value]]})
+    if data:
+        ws.batch_update(data, value_input_option="RAW")
     from collections import Counter
-    print("Poziom: uzupełniono", len(updates), "wierszy:", dict(Counter(u[1] for u in updates)))
+    print("Poziom: uzupełniono", len(levels), "wierszy:", dict(Counter(u[1] for u in levels)))
+    print("AI: uzupełniono", len(ais), "wierszy:", dict(Counter(v.split(" (")[0] for _, v in ais)))
 
 
 BACKUP_PREFIX = "Oferty_backup_"
@@ -347,7 +406,7 @@ def init(sh, cfg, skills_csv="skills.csv"):
                                        "properties": {"hiddenByUser": True}, "fields": "hiddenByUser"}},
     ]})
 
-    ensure_level_format(sh, ws)
+    ensure_formats(sh, ws)
     ensure_descriptions_tab(sh, cfg)
     ensure_sources_tab(sh, cfg)
     ensure_filter_views(sh, ws)
@@ -472,6 +531,7 @@ def offer_row(o, today: str) -> list:
     row[COL["Status"]] = "Do wysłania"
     row[COL["Match"]] = round(o.match, 2) if o.match is not None else ""
     row[COL["Poziom"]] = getattr(o, "level", "")
+    row[COL["AI"]] = getattr(o, "ai", "")
     row[COL["Widełki / forma"]] = o.salary_text()
     row[COL["Luki"]] = ", ".join(o.gaps)
     row[COL["Dopisz do CV"]] = ", ".join(o.add_to_cv)

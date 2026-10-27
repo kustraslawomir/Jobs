@@ -78,6 +78,19 @@ level:
     "4+ etapy rekrutacji":
       - '(?:[4-9]|four|five|six|cztery|piec|szesc) (?:stage|stages|step|steps|round|rounds|interview|interviews|etap\w*|rozmow\w*)'
 
+# oferty związane z AI (kolumna AI, moduł ai_flag.py). Wpisy to regexy na tekście znormalizowanym
+# (małe litery, bez ogonków i interpunkcji), dopasowywane jako całe słowa z opcjonalnym "s" na końcu.
+ai:
+  # AI jako produkt / domena pracy
+  produkt: ["llm", "gpt", "openai", "anthropic", "claude", "gemini", "genai", "generative ai", "chatbot",
+            "ai assistant", "rag", "machine learning", "uczenie maszynowe", "ml kit", "tensorflow lite", "tflite",
+            "litert", "mediapipe", "on device ml", "computer vision", "sztuczna inteligencja",
+            "artificial intelligence", "ai"]
+  # AI w codziennej pracy programisty
+  workflow: ["copilot", "cursor", "claude code", "ai tools", "ai assisted", "agentic",
+             "(?:ai|coding|software development|sdlc) agent", "agent\\w* (?:for|in) (?:software|development|sdlc)",
+             "prompt engineering"]
+
 sheet:
   tab_offers: "Oferty"
   tab_skills: "Słownik"
