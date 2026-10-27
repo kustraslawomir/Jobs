@@ -181,10 +181,13 @@ def main():
             print(f"{m:>5}  {o.company} – {o.title} | {o.salary_text()} | wym.: {o.n_req} | luki: {', '.join(o.gaps) or '-'}")
     else:
         import sheets
-        sheets.append_offers(ws, new, today, last_row)
+        written = sheets.append_offers(ws, new, today, last_row)
+        print(f"Zapisano do Ofert: {len(written)} wierszy (od wiersza {last_row + 1}); match w kolejności zapisu: "
+              + ", ".join("–" if o.match is None else f"{o.match:.0%}" for o in written))
         sheets.append_descriptions(sh, cfg, [(o.key, norm_description(o.description)) for o in new])
         notify(cfg, new)
         sheets.append_source_runs(sh, cfg, runs, alert_sources(cfg, runs, previous))
+        print("Zakładka Źródła, ostatnie wiersze:", *map(" | ".join, sheets.tail_source_runs(sh, cfg, len(runs))), sep="\n  ")
 
     print("Statystyki:", stats)
     if args.dry_run:

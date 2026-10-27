@@ -150,3 +150,28 @@ def test_parse_salary_text():
 
 def test_short_descriptions_are_not_compared():
     assert shingles(norm_description(words("w", 10))) is None
+
+
+def test_two_antal_offers_with_same_title_but_different_descriptions_are_only_a_possible_duplicate():
+    dd = dd_with(offer("Antal Sp. z o.o.", "Senior Android Developer", words("aa", 80)))
+    v = dd.check(offer("Antal", "Senior Android Developer", words("bb", 80), source="justjoinit", sid="2"))
+    assert v.rejected is None
+    assert [m.kind for m in v.matches] == ["possible_agency"]
+    assert v.notes[0].startswith("Możliwy duplikat (agencja): Antal Sp. z o.o. – Senior Android Developer (")
+
+
+def test_agency_offers_without_description_are_only_a_possible_duplicate():
+    dd = dd_with(offer("Antal", "Senior Android Developer"))
+    v = dd.check(offer("Antal", "Senior Android Developer", sid="2"))
+    assert v.rejected is None and [m.kind for m in v.matches] == ["possible_agency"]
+
+
+def test_agency_offers_with_matching_content_are_a_sure_duplicate():
+    dd = dd_with(offer("Antal", "Senior Android Developer", BASE_DESC))
+    v = dd.check(offer("Antal", "Senior Android Developer", SIMILAR_DESC, sid="2"))
+    assert v.rejected and v.rejected.reason == SURE_BY_TITLE
+
+
+def test_non_agency_same_company_and_title_stays_a_sure_duplicate_whatever_the_content():
+    dd = dd_with(offer("Acme", "Senior Android Developer", words("aa", 80)))
+    assert dd.check(offer("Acme", "Senior Android Developer", words("bb", 80), sid="2")).rejected is not None

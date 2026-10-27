@@ -91,7 +91,8 @@ Niektóre portale (teraz czyjesteldorado.pl) blokują adresy IP serwerowni GitHu
    cd ~/actions-runner
    ./svc.sh install && ./svc.sh start
    ```
-5. Test: **Actions → Zbieranie ofert (lokalny runner) → Run workflow → dry-run**.
+5. Workflow `scrape-local.yml` jest **wyłączony** do czasu rejestracji runnera (inaczej joby z crona czekałyby w kolejce bez runnera). Po zarejestrowaniu włącz go: `gh workflow enable scrape-local.yml`.
+6. Test: **Actions → Zbieranie ofert (lokalny runner) → Run workflow → dry-run**.
 
 ### Jak to działa i jak sprawdzić
 - Job `scrape-local` czeka w kolejce na runner **do 24 h**; gdy Mac śpi lub jest wyłączony, wystartuje po jego wybudzeniu (po 24 h GitHub go anuluje). Nie ma wtedy wiersza w zakładce „Źródła”, więc brak runu widać tylko po dacie ostatniego wiersza.

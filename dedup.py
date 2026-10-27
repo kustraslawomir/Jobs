@@ -155,7 +155,7 @@ def _overlap(a, b) -> bool:
 
 @dataclass
 class Match:
-    kind: str                  # "dup" | "possible" | "agency"
+    kind: str                  # "dup" | "possible" | "possible_agency" | "agency"
     reason: str
     company: str
     title: str
@@ -168,7 +168,8 @@ class Match:
         if self.kind == "agency":
             return f"Agencja – prawdopodobnie oferta {self.company}"
         c = "n/d" if self.content is None else f"{self.content:.0%}"
-        return f"Możliwy duplikat: {self.company} – {self.title} ({self.source}, treść {c}, tytuł {self.title_score}%)"
+        label = "Możliwy duplikat (agencja)" if self.kind == "possible_agency" else "Możliwy duplikat"
+        return f"{label}: {self.company} – {self.title} ({self.source}, treść {c}, tytuł {self.title_score}%)"
 
     def describe(self, offer) -> str:
         c = "n/d" if self.content is None else f"{self.content:.0%}"
@@ -262,6 +263,10 @@ class Deduper:
                 agency.append(m("agency"))
                 continue
             sure_title = same_co and t >= c["title_sure"]               # niezależnie od treści; rozłączne widełki odpadły wyżej
+            if sure_title and (cand_agency or e.agency) and (content is None or content < c["content_possible"]):
+                # agencja wystawia ten sam tytuł dla różnych klientów: bez potwierdzenia treścią nie odrzucamy
+                possible.append(m("possible_agency"))
+                continue
             sure_content = content is not None and content >= c["content_sure"] and t >= c["title_content"]
             if sure_title or sure_content:
                 if not same_co and e.agency:                # bezpośrednia oferta kontra wpis agencji: nie wycinamy

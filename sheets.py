@@ -216,6 +216,10 @@ def append_source_runs(sh, cfg, runs: list[tuple], failing: set[str]):
         sh.batch_update({"requests": reqs})
 
 
+def tail_source_runs(sh, cfg, n: int) -> list[list[str]]:
+    return sh.worksheet(cfg["sheet"]["tab_sources"]).get_all_values()[-n:] if n else []
+
+
 def read_descriptions(sh, cfg) -> dict[str, str]:
     try:
         rows = sh.worksheet(cfg["sheet"]["tab_descriptions"]).get_all_values()[1:]
@@ -248,8 +252,9 @@ def sort_by_match(offers):
 
 
 def append_offers(ws, offers, today: str, last_row: int):
+    """Dopisuje nowe oferty (od najwyższego matchu) i zwraca je w kolejności zapisu."""
     if not offers:
-        return
+        return []
     offers = sort_by_match(offers)
     rows = []
     for o in offers:
@@ -274,3 +279,4 @@ def append_offers(ws, offers, today: str, last_row: int):
     end = start + len(rows) - 1
     ws.update(range_name=f"A{start}:I{end}", values=left, value_input_option="USER_ENTERED")
     ws.update(range_name=f"K{start}:R{end}", values=right, value_input_option="USER_ENTERED")
+    return offers
