@@ -2,6 +2,28 @@ from dataclasses import dataclass, field
 
 
 @dataclass
+class Pay:
+    """Widełki dla jednej formy współpracy. lo/hi to kwoty MIESIĘCZNE w walucie oryginalnej;
+    hourly = oryginalna stawka godzinowa (lo, hi), tylko dla ofert rozliczanych godzinowo."""
+    contract: str
+    lo: float | None
+    hi: float | None
+    currency: str = "PLN"
+    hourly: tuple[float, float] | None = None
+
+
+def _num(v: float) -> str:
+    return f"{v:,.0f}".replace(",", " ")
+
+
+def _span(lo, hi) -> str:
+    lo, hi = round(lo) if lo is not None else None, round(hi) if hi is not None else None
+    if lo is not None and hi is not None and lo == hi:
+        return _num(lo)
+    return f"{_num(lo) if lo is not None else '?'}–{_num(hi) if hi is not None else '?'}"
+
+
+@dataclass
 class Offer:
     source: str            # "justjoinit", "nofluffjobs", ...
     source_id: str         # stabilne ID z portalu
@@ -14,7 +36,8 @@ class Offer:
     salary_to: float | None = None
     currency: str = ""
     salary_period: str = "month"   # "month" | "hour" | "year"
-    contract: str = ""             # "B2B", "UoP", ...
+    contract: list[str] = field(default_factory=list)   # formy współpracy: ["B2B", "UoP"]; puste = brak informacji
+    pay: list[Pay] = field(default_factory=list)         # widełki per forma (tylko te z kwotami)
     description: str = ""          # pełny opis albo lista skilli, z tego liczy się ATS
     # wypełniane później
     match: float | None = None
@@ -27,25 +50,44 @@ class Offer:
     def key(self) -> str:
         return f"{self.source}:{self.source_id}"
 
-    def salary_text(self) -> str:
-        if self.salary_from is None and self.salary_to is None:
-            return "brak widełek"
-        f = f"{self.salary_from:,.0f}".replace(",", " ") if self.salary_from else "?"
-        t = f"{self.salary_to:,.0f}".replace(",", " ") if self.salary_to else "?"
-        per = {"hour": "/h", "year": "/rok"}.get(self.salary_period, "/mies.")
-        return f"{f}–{t} {self.currency}{per} {self.contract}".strip()
+    def __post_init__(self):
+        if isinstance(self.contract, str):
+            self.contract = [self.contract] if self.contract else []
+        if not self.pay and (self.salary_from is not None or self.salary_to is not None):
+            hi = self.salary_to
+            mult = {"hour": 168, "year": 1 / 12}.get(self.salary_period, 1)
+            self.pay = [Pay(self.contract[0] if self.contract else "",
+                            self.salary_from * mult if self.salary_from else None,
+                            hi * mult if hi else None, self.currency or "PLN")]
+        for p in self.pay:
+            if p.contract and p.contract not in self.contract:
+                self.contract.append(p.contract)
+        if self.salary_from is None and self.salary_to is None and self.pay:
+            top = max(self.pay, key=lambda p: (p.currency == "PLN", p.hi or 0))
+            self.salary_from, self.salary_to, self.currency = top.lo, top.hi, top.currency
 
-    def salary_to_pln_month(self, fx: dict) -> float | None:
-        if self.salary_to is None:
-            return None
-        v = self.salary_to * fx.get(self.currency.upper(), 1)
-        return {"hour": v * 168, "year": v / 12}.get(self.salary_period, v)
+    def salary_text(self) -> str:
+        """"B2B 23 520–29 400 (140–175/h) | UoP 18 000–22 000"; kwoty miesięczne, waluta tylko gdy nie PLN."""
+        parts = []
+        for p in self.pay:
+            seg = f"{p.contract} " if p.contract else ""
+            seg += _span(p.lo, p.hi)
+            if p.currency and p.currency != "PLN":
+                seg += f" {p.currency}"
+            if p.hourly:
+                seg += f" ({_span(*p.hourly)}/h)"
+            parts.append(seg)
+        if parts:
+            return " | ".join(parts)
+        return "brak widełek" + (f" ({', '.join(self.contract)})" if self.contract else "")
 
     def salary_range_pln(self, fx: dict) -> tuple[float, float] | None:
-        """Przedział widełek w PLN/miesiąc (do porównywania ofert); None = brak widełek."""
-        lo, hi = self.salary_from or self.salary_to, self.salary_to or self.salary_from
-        if lo is None or hi is None:
+        """Przedział widełek w PLN/miesiąc (suma po formach); None = brak widełek."""
+        rs = [(p.lo or p.hi, p.hi or p.lo, fx.get(p.currency.upper(), 1)) for p in self.pay if p.lo or p.hi]
+        if not rs:
             return None
-        k = fx.get(self.currency.upper(), 1)
-        mult = {"hour": 168, "year": 1 / 12}.get(self.salary_period, 1)
-        return lo * k * mult, hi * k * mult
+        return min(lo * k for lo, _, k in rs), max(hi * k for _, hi, k in rs)
+
+    def salary_to_pln_month(self, fx: dict) -> float | None:
+        r = self.salary_range_pln(fx)
+        return r[1] if r else None

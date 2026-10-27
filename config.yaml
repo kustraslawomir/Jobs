@@ -12,6 +12,8 @@ filters:
                   "test automation", "automation", "product", "designer", "ux", "ui/ux", "owner", "manager",
                   "marketing", "sales"]
   remote_only: true
+  # dozwolone formy współpracy; oferta bez podanej formy przechodzi
+  contract_allow: ["B2B", "UoP"]
   # minimalne widełki "do" w PLN / miesiąc (B2B lub UoP); 0 = nie filtruj
   # oferty bez widełek przechodzą (flaga "brak widełek" w kolumnie Widełki)
   min_salary_to_pln: 18000
@@ -37,6 +39,7 @@ sheet:
   tab_offers: "Oferty"
   tab_skills: "Słownik"
   tab_descriptions: "_opisy"
+  tab_sources: "Źródła"
   followup_days: 7
   soon_days: 2
 

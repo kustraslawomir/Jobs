@@ -3,26 +3,34 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from sources.justjoinit import _salary, _job_posting_description  # noqa: E402
+from sources.justjoinit import _pay, _job_posting_description  # noqa: E402
 
 
-def et(unit, frm, to, fpu, tpu):
-    return {"from": frm, "to": to, "fromPerUnit": fpu, "toPerUnit": tpu,
-            "currency": "PLN", "currencySource": "original", "type": "b2b", "unit": unit}
+def et(typ, unit, frm, to, fpu, tpu, cur="PLN", src="original"):
+    return {"from": frm, "to": to, "fromPerUnit": fpu, "toPerUnit": tpu, "currency": cur,
+            "currencySource": src, "type": typ, "unit": unit}
 
 
-def test_hourly_rate_in_contract():
-    frm, to, cur, period, contract = _salary({"employmentTypes": [et("Hour", 23520, 29400, 140, 175)]})
-    assert (frm, to, cur, period, contract) == (23520, 29400, "PLN", "month", "B2B (140–175/h)")
+def test_hourly_rate_kept_only_for_hour_unit():
+    contracts, pays = _pay({"employmentTypes": [et("b2b", "Hour", 23520, 29400, 140, 175)]})
+    assert contracts == ["B2B"]
+    assert (pays[0].lo, pays[0].hi, pays[0].hourly) == (23520, 29400, (140, 175))
 
 
-def test_equal_hourly_rate_single_number():
-    assert _salary({"employmentTypes": [et("Hour", 22680, 22680, 135, 135)]})[4] == "B2B (135/h)"
+def test_month_and_year_have_no_hourly_part():
+    for unit, fpu, tpu in (("Month", 20000, 25000), ("Year", 622096, 660977)):
+        _, pays = _pay({"employmentTypes": [et("b2b", unit, 20000, 25000, fpu, tpu)]})
+        assert pays[0].hourly is None
 
 
-def test_month_and_year_have_no_suffix():
-    assert _salary({"employmentTypes": [et("Month", 20000, 25000, 20000, 25000)]})[4] == "B2B"
-    assert _salary({"employmentTypes": [et("Year", 51841, 55081, 622096, 660977)]})[4] == "B2B"
+def test_all_contract_forms_are_listed():
+    contracts, pays = _pay({"employmentTypes": [
+        et("b2b", "Month", 20000, 25000, 20000, 25000),
+        et("permanent", "Month", 15000, 18000, 15000, 18000),
+        et("mandate_contract", "Month", None, None, None, None),
+        et("b2b", "Month", 4600, 5800, 4600, 5800, cur="EUR", src="conversion")]})
+    assert contracts == ["B2B", "UoP", "UZ"]
+    assert [(p.contract, p.hi, p.currency) for p in pays] == [("B2B", 25000, "PLN"), ("UoP", 18000, "PLN")]
 
 
 def test_description_from_json_ld():

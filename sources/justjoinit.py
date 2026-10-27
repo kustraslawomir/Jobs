@@ -10,7 +10,7 @@ import html
 import json
 import re
 import time
-from models import Offer
+from models import Offer, Pay
 
 LIST_URL = "https://justjoin.it/api/candidate-api/offers"
 PARAMS = {"keywords": "android", "keywordType": "any", "sortBy": "publishedAt",
@@ -20,28 +20,36 @@ OFFER_URL = "https://justjoin.it/job-offer/{slug}"
 MAX_PAGES = 40  # API ignoruje perPage i daje max 10 na stronę: 40 x 10 = 400 najnowszych
 
 
-def _salary(item):
+_CONTRACTS = {"b2b": "B2B", "permanent": "UoP", "mandate_contract": "UZ"}
+
+
+def _pay(item):
+    """Zwraca (formy współpracy, widełki per forma). from/to w API to zawsze kwoty miesięczne;
+    stawkę godzinową (fromPerUnit/toPerUnit) dopisujemy tylko dla unit == Hour."""
     from . import pick
-    types = pick(item, "employmentTypes", default=[]) or []
+    by_type: dict[str, list] = {}
+    for et in pick(item, "employmentTypes", default=[]) or []:
+        if isinstance(et, dict):
+            by_type.setdefault(str(et.get("type", "")).lower(), []).append(et)
 
     def score(et):
-        # preferuj: oryginalna waluta PLN > dowolna PLN > B2B > reszta
-        cur = str(et.get("currency", "")).upper()
-        return ((cur == "PLN") * 4 + (et.get("currencySource") == "original") * 2
-                + (str(et.get("type", "")).lower() == "b2b"))
+        # preferuj: oryginalna waluta PLN > dowolna PLN > reszta
+        return (str(et.get("currency", "")).upper() == "PLN") * 2 + (et.get("currencySource") == "original")
 
-    cands = [et for et in types if isinstance(et, dict) and et.get("to") is not None]
-    if not cands:
-        return None, None, "", "month", ""
-    best = max(cands, key=score)
-    # from/to to zawsze kwoty miesięczne; stawkę godzinową (fromPerUnit/toPerUnit) dopisujemy tylko dla unit == Hour
-    unit = str(best.get("unit", "Month")).lower()
-    typ = str(best.get("type", "")).lower()
-    contract = {"b2b": "B2B", "permanent": "UoP", "mandate_contract": "UZ"}.get(typ, typ)
-    if "hour" in unit and best.get("fromPerUnit") is not None and best.get("toPerUnit") is not None:
-        lo, hi = round(best["fromPerUnit"]), round(best["toPerUnit"])
-        contract = f"{contract} ({lo}/h)" if lo == hi else f"{contract} ({lo}–{hi}/h)"
-    return best.get("from"), best.get("to"), str(best.get("currency", "")).upper(), "month", contract
+    contracts, pays = [], []
+    for typ, ets in by_type.items():
+        name = _CONTRACTS.get(typ, typ)
+        if name and name not in contracts:
+            contracts.append(name)
+        cands = [e for e in ets if e.get("to") is not None]
+        if not cands:
+            continue
+        best = max(cands, key=score)
+        hourly = None
+        if "hour" in str(best.get("unit", "")).lower() and None not in (best.get("fromPerUnit"), best.get("toPerUnit")):
+            hourly = (best["fromPerUnit"], best["toPerUnit"])
+        pays.append(Pay(name, best.get("from"), best.get("to"), str(best.get("currency", "")).upper() or "PLN", hourly))
+    return contracts, pays
 
 
 def _skills(item, key):
@@ -65,7 +73,7 @@ def fetch(session) -> list[Offer]:
             slug = pick(it, "slug")
             if not oid or not slug:
                 continue
-            sf, st, cur, per, con = _salary(it)
+            contracts, pays = _pay(it)
             wt = str(pick(it, "workplaceType", default="")).lower()
             cities = [l.get("city", "") for l in (pick(it, "locations", default=[]) or []) if isinstance(l, dict)]
             skills = _skills(it, "requiredSkills") + _skills(it, "niceToHaveSkills")
@@ -74,7 +82,7 @@ def fetch(session) -> list[Offer]:
                 company=pick(it, "companyName", default="?"), title=pick(it, "title", default="?"),
                 remote=(wt == "remote") if wt else None,
                 location=", ".join(dict.fromkeys(c for c in cities if c)) or pick(it, "city", default=""),
-                salary_from=sf, salary_to=st, currency=cur, salary_period=per, contract=con,
+                contract=contracts, pay=pays,
                 description=" ".join([pick(it, "title", default="")] + skills),
             ))
         nxt = pick(data, "meta.next.cursor")

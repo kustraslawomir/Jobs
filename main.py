@@ -43,24 +43,45 @@ def passes_filters(o, f, fx) -> str | None:
         return reason
     if f.get("remote_only") and o.remote is not True:
         return "nie remote"
+    allow = {c.upper() for c in f.get("contract_allow") or []}
+    if allow and o.contract and not allow & {c.upper() for c in o.contract}:
+        return "forma współpracy"
     top = o.salary_to_pln_month(fx)
     if f.get("min_salary_to_pln") and top is not None and top < f["min_salary_to_pln"]:
         return "za niskie widełki"
     return None
 
 
-def notify(cfg, offers):
+def telegram(cfg, text: str):
     tok, chat = os.environ.get("TELEGRAM_TOKEN"), os.environ.get("TELEGRAM_CHAT_ID")
     if not (cfg["notify"].get("telegram") and tok and chat):
         return
+    requests.post(f"https://api.telegram.org/bot{tok}/sendMessage",
+                  json={"chat_id": chat, "text": text, "disable_web_page_preview": True}, timeout=20)
+
+
+def notify(cfg, offers):
     good = [o for o in offers if (o.match or 0) >= cfg["notify"]["min_match_to_notify"]]
     if not good:
         return
     lines = [f"🆕 {len(good)} nowych ofert (match ≥ {cfg['notify']['min_match_to_notify']:.0%}):"]
     for o in sorted(good, key=lambda x: -(x.match or 0))[:15]:
         lines.append(f"• {o.match:.0%} {o.company} – {o.title}\n  {o.salary_text()}\n  {o.url}")
-    requests.post(f"https://api.telegram.org/bot{tok}/sendMessage",
-                  json={"chat_id": chat, "text": "\n".join(lines), "disable_web_page_preview": True}, timeout=20)
+    telegram(cfg, "\n".join(lines))
+
+
+def is_failed(fetched: int, error: str) -> bool:
+    return bool(error) or fetched == 0
+
+
+def alert_sources(cfg, runs, previous) -> set[str]:
+    """Źródła, które zawiodły (błąd albo 0 ofert) w tym i poprzednim runie. Wysyła alert na Telegram."""
+    failing = {name for name, _, fetched, _, error in runs
+               if is_failed(fetched, error) and name in previous and is_failed(*previous[name])}
+    if failing:
+        detail = {r[0]: (r[4] or "0 pobranych ofert") for r in runs}
+        telegram(cfg, "⚠️ Źródła bez ofert 2 runy z rzędu:\n" + "\n".join(f"• {n}: {detail[n][:200]}" for n in sorted(failing)))
+    return failing
 
 
 def main():
@@ -75,7 +96,7 @@ def main():
     if args.dry_run:
         with open("skills.csv", encoding="utf-8") as fh:
             skill_rows = list(csv.reader(fh))[1:]
-        existing, last_row, ws, descriptions = [], 1, None, {}
+        existing, last_row, ws, descriptions, previous = [], 1, None, {}, {}
     else:
         import sheets
         sh = sheets.connect()
@@ -87,13 +108,15 @@ def main():
         skill_rows = sheets.read_skills(sh, cfg)
         existing, last_row = sheets.read_existing(ws)
         descriptions = sheets.read_descriptions(sh, cfg)
+        previous = sheets.last_source_runs(sh, cfg)
 
     skills = ats.load_skills(skill_rows)
     dd = Deduper(existing, descriptions, cfg["dedup"], cfg["fx_to_pln"])
     session = requests.Session()
     session.headers["User-Agent"] = "Mozilla/5.0 (job-tracker; personal use)"
 
-    new, stats, errors, events = [], {}, [], []
+    new, stats, errors, events, runs = [], {}, [], [], []
+    today = dt.date.today().isoformat()
     for name, enabled in cfg["sources"].items():
         if not enabled or name not in REGISTRY:
             continue
@@ -101,6 +124,7 @@ def main():
             offers = REGISTRY[name](session)
         except Exception as e:                       # jedno źródło padło -> reszta działa
             errors.append(f"{name}: {e}")
+            runs.append((name, today, 0, 0, str(e)[:300]))
             continue
         st = stats.setdefault(name, {"pobrane": len(offers), "nowe": 0})
         detail_fn = DETAILS.get(name)
@@ -140,8 +164,8 @@ def main():
             dd.add(o)
             new.append(o)
             st["nowe"] += 1
+        runs.append((name, today, len(offers), st["nowe"], ""))
 
-    today = dt.date.today().isoformat()
     if args.dry_run:
         for o in new:
             m = f"{o.match:.0%}" if o.match is not None else "–"
@@ -151,8 +175,14 @@ def main():
         sheets.append_offers(ws, new, today, last_row)
         sheets.append_descriptions(sh, cfg, [(o.key, norm_description(o.description)) for o in new])
         notify(cfg, new)
+        sheets.append_source_runs(sh, cfg, runs, alert_sources(cfg, runs, previous))
 
     print("Statystyki:", stats)
+    if args.dry_run:
+        print("Źródła (tak wyglądałby zapis do zakładki):")
+        print(f"  {'źródło':<14} {'data':<11} {'pobrane':>7} {'nowe':>5}  błąd")
+        for name, day, fetched, n_new, error in runs:
+            print(f"  {name:<14} {day:<11} {fetched:>7} {n_new:>5}  {error}")
     if args.dry_run:
         sure = [e for e in events if e[0] == "DUP"]
         only_content = sum(1 for e in sure if e[2] == SURE_BY_CONTENT)

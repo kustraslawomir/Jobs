@@ -7,11 +7,9 @@ def words(tag: str, n: int, start: int = 0) -> str:
 
 
 def offer(company, title, desc="", source="nofluffjobs", sid="1", sal=None):
-    o = Offer(source=source, source_id=sid, url="", company=company, title=title, description=desc,
-              currency="PLN", salary_period="month")
-    if sal:
-        o.salary_from, o.salary_to = sal
-    return o
+    lo, hi = sal or (None, None)
+    return Offer(source=source, source_id=sid, url="", company=company, title=title, description=desc,
+                 currency="PLN", salary_from=lo, salary_to=hi)
 
 
 # jeden opis i jego wariant o podobieństwie ok. 0.7 (85 wspólnych słów z 100, reszta inna)

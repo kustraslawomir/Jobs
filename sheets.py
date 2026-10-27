@@ -10,6 +10,7 @@ HEADERS = ["Dodano", "Firma", "Stanowisko", "Link", "Status", "Wysłano CV", "Ro
 COL = {h: i for i, h in enumerate(HEADERS)}           # 0-based
 STATUSES = ["Do wysłania", "Wysłane", "Odpowiedź", "Rozmowa", "Zadanie domowe", "Oferta",
             "Przyjęta", "Odrzucone", "Rezygnacja", "Ghosting"]
+SOURCE_HEADERS = ["Źródło", "Data", "Pobrane", "Nowe", "Błąd"]
 SKILL_HEADERS = ["Kategoria", "Keyword", "Wariant 2", "Wariant 3", "Wariant 4", "Mam?", "Waga 1-3", "Komentarz"]
 
 
@@ -62,6 +63,7 @@ def init(sh, cfg, skills_csv="skills.csv"):
     ]})
 
     ensure_descriptions_tab(sh, cfg)
+    ensure_sources_tab(sh, cfg)
 
     if s["tab_skills"] not in titles:
         sk = sh.add_worksheet(s["tab_skills"], 300, len(SKILL_HEADERS))
@@ -88,6 +90,53 @@ def ensure_descriptions_tab(sh, cfg):
         sh.batch_update({"requests": [{"updateSheetProperties": {
             "properties": {"sheetId": ws.id, "hidden": True}, "fields": "hidden"}}]})
         return ws
+
+
+def ensure_sources_tab(sh, cfg):
+    """Zakładka "Źródła": po jednym wierszu na źródło na run. Idempotentna, nie rusza istniejących danych."""
+    name = cfg["sheet"]["tab_sources"]
+    try:
+        return sh.worksheet(name)
+    except gspread.WorksheetNotFound:
+        ws = sh.add_worksheet(name, 1000, len(SOURCE_HEADERS))
+        ws.update(range_name="A1", values=[SOURCE_HEADERS])
+        sh.batch_update({"requests": [
+            {"updateSheetProperties": {"properties": {"sheetId": ws.id, "gridProperties": {"frozenRowCount": 1}},
+                                       "fields": "gridProperties.frozenRowCount"}},
+            {"repeatCell": {"range": {"sheetId": ws.id, "startRowIndex": 0, "endRowIndex": 1},
+                            "cell": {"userEnteredFormat": {"textFormat": {"bold": True}}},
+                            "fields": "userEnteredFormat.textFormat.bold"}},
+        ]})
+        return ws
+
+
+def last_source_runs(sh, cfg) -> dict[str, tuple[int, str]]:
+    """Ostatni zapisany run każdego źródła: nazwa -> (pobrane, błąd)."""
+    try:
+        rows = sh.worksheet(cfg["sheet"]["tab_sources"]).get_all_values()[1:]
+    except gspread.WorksheetNotFound:
+        return {}
+    out = {}
+    for r in rows:
+        r = r + [""] * len(SOURCE_HEADERS)
+        if r[0]:
+            out[r[0]] = (int(r[2]) if r[2].isdigit() else 0, r[4])
+    return out
+
+
+def append_source_runs(sh, cfg, runs: list[tuple], failing: set[str]):
+    """runs: [(źródło, data, pobrane, nowe, błąd)]; wiersze źródeł z `failing` malujemy na czerwono."""
+    if not runs:
+        return
+    ws = ensure_sources_tab(sh, cfg)
+    start = len(ws.get_all_values()) + 1
+    ws.append_rows([list(r) for r in runs], value_input_option="RAW")
+    reqs = [{"repeatCell": {"range": {"sheetId": ws.id, "startRowIndex": start - 1 + i, "endRowIndex": start + i},
+                            "cell": {"userEnteredFormat": {"backgroundColor": {"red": 0.96, "green": 0.8, "blue": 0.8}}},
+                            "fields": "userEnteredFormat.backgroundColor"}}
+            for i, r in enumerate(runs) if r[0] in failing]
+    if reqs:
+        sh.batch_update({"requests": reqs})
 
 
 def read_descriptions(sh, cfg) -> dict[str, str]:

@@ -118,14 +118,23 @@ _CUR = re.compile(r"\b(PLN|EUR|USD|GBP|CHF)\b")
 
 
 def parse_salary_text(text: str, fx: dict) -> tuple[float, float] | None:
-    """Odczyt przedziału (PLN/mies.) z tekstu kolumny "Widełki / forma", np. "23 520–29 400 PLN/mies. B2B (140–175/h)"."""
-    t = re.sub(r"\([^)]*\)", " ", text or "")           # stawki godzinowe w nawiasach pomijamy
-    ranges = [(float(re.sub(r"\D", "", a)), float(re.sub(r"\D", "", b))) for a, b in _RANGE.findall(t)]
-    if not ranges:
+    """Odczyt przedziału (PLN/mies.) z kolumny "Widełki / forma", np. "B2B 23 520–29 400 (140–175/h) | UoP 18 000–22 000".
+    Segmenty to formy współpracy; zwracamy sumę przedziałów. Stawki godzinowe w nawiasach pomijamy."""
+    found = []
+    for seg in (text or "").split("|"):
+        seg = re.sub(r"\([^)]*\)", " ", seg)
+        cur = _CUR.search(seg)
+        k = fx.get(cur.group(1), 1) if cur else 1
+        for a, b in _RANGE.findall(seg):
+            found.append((float(re.sub(r"\D", "", a)) * k, float(re.sub(r"\D", "", b)) * k))
+        if not _RANGE.search(seg):                          # pojedyncza kwota, np. "B2B 22 680"
+            m = re.search(rf"({_NUM})", seg)
+            if m and "brak" not in seg:
+                v = float(re.sub(r"\D", "", m.group(1))) * k
+                found.append((v, v))
+    if not found:
         return None
-    cur = _CUR.search(t)
-    k = fx.get(cur.group(1), 1) if cur else 1
-    return min(r[0] for r in ranges) * k, max(r[1] for r in ranges) * k
+    return min(f[0] for f in found), max(f[1] for f in found)
 
 
 def _overlap(a, b) -> bool:
