@@ -55,3 +55,18 @@ Potem: zakładka **Actions → Zbieranie ofert → Run workflow**, żeby odpali�
 - Nowy portal → nowy plik w `sources/` z funkcją `fetch(session) -> list[Offer]` i wpis w `sources/__init__.py` oraz `config.yaml`.
 - Nowe CV → podmień `cv.txt`.
 - Nie zwiększaj częstotliwości. 2× dziennie wystarczy, a częściej to prośba o bana.
+
+## Stan źródeł (sprawdzone 2026-10-27)
+
+| Źródło | Metoda | Stan |
+|---|---|---|
+| justjoin.it | wewnętrzne JSON API (`/api/candidate-api/offers`) + JSON-LD oferty | działa |
+| nofluffjobs.com | wewnętrzne JSON API | działa |
+| czyjesteldorado.pl | dane osadzone w HTML (payload RSC na `/search`), JSON-LD oferty | działa, agreguje też oferty innych portali (m.in. theprotocol.it, inhire.io) |
+| bulldogjob.pl | `__NEXT_DATA__` na liście po technologii, JSON-LD oferty | działa (mała pula ofert) |
+| solid.jobs | oficjalne publiczne REST API (`/public-api/offers/IT`) | działa, pełny opis w liście |
+| theprotocol.it | – | **nie podłączone**: Cloudflare (403 „Just a moment…”) także dla sitemap z robots.txt; nie obchodzimy. Część ofert wpada przez czyjesteldorado.pl |
+| it.pracuj.pl | – | **nie podłączone**: Cloudflare (403). Brak publicznego API |
+| inhire.io | – | **nie podłączone**: SPA, lista ofert idzie przez wewnętrzne API, którego adresu nie da się ustalić z kodu statycznego. Żeby je dodać: trace z DevTools → Network → Fetch/XHR (URL + fragment odpowiedzi). Część ofert wpada przez czyjesteldorado.pl |
+
+Formy współpracy mapuje `contracts.py` na B2B / UoP / UZ / UoD; nieznane wartości zostają surowe i `--dry-run` wypisuje je jako „nieznana forma”.
