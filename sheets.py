@@ -171,11 +171,12 @@ def _rule_mentions(rules: list[dict], *needles: str) -> bool:
     return any(json.dumps(n, ensure_ascii=False)[1:-1] in json.dumps(r, ensure_ascii=False) for r in rules for n in needles)
 
 
-def format_requests(sheet_id: int, existing_rules: list[dict]) -> list[dict]:
+def format_requests(sheet_id: int, existing_rules: list[dict], sep: str = ",") -> list[dict]:
     """Formatowanie warunkowe Ofert, dokładane tylko gdy czegoś brakuje (idempotentne). Kolejność reguł = priorytet:
     1) szarość zamkniętych statusów (jeśli w arkuszu nie ma takiej reguły, dodajemy ją na początku),
     2) Poziom "Senior+" na pomarańczowo,
-    3) cały wiersz z niepustą kolumną AI na jasnofioletowo (na końcu, więc szarość i pomarańcz mają pierwszeństwo)."""
+    3) cały wiersz z niepustą kolumną AI na jasnofioletowo (na końcu, więc szarość i pomarańcz mają pierwszeństwo).
+    Formuły są w składni locale arkusza, więc `sep` to separator argumentów jak w mirror_formulas."""
     n = len(existing_rules)
     reqs = []
 
@@ -186,7 +187,7 @@ def format_requests(sheet_id: int, existing_rules: list[dict]) -> list[dict]:
 
     width = len(HEADERS)
     if not _rule_mentions(existing_rules, "Odrzucone", "Rezygnacja", "Ghosting"):
-        cond = ",".join(f'$E2="{s}"' for s in CLOSED_STATUSES)
+        cond = sep.join(f'$E2="{s}"' for s in CLOSED_STATUSES)
         add({"ranges": [{"sheetId": sheet_id, "startRowIndex": 1, "startColumnIndex": 0, "endColumnIndex": width}],
              "booleanRule": {"condition": {"type": "CUSTOM_FORMULA", "values": [{"userEnteredValue": f"=OR({cond})"}]},
                              "format": {"backgroundColor": {"red": 0.85, "green": 0.85, "blue": 0.85},
@@ -209,14 +210,14 @@ def format_requests(sheet_id: int, existing_rules: list[dict]) -> list[dict]:
     return reqs
 
 
-def ensure_formats(sh, offers_ws):
+def ensure_formats(sh, offers_ws, sep: str):
     meta = sh.fetch_sheet_metadata(params={"fields": "sheets(properties(sheetId),conditionalFormats)"})
     sheet = next(s for s in meta["sheets"] if s["properties"]["sheetId"] == offers_ws.id)
     rules = sheet.get("conditionalFormats", [])
     print("Formatowanie warunkowe Ofert, istniejące reguły:",
           [(r.get("booleanRule", {}).get("condition", {}).get("type") or "gradient",
             [v.get("userEnteredValue") for v in r.get("booleanRule", {}).get("condition", {}).get("values", [])]) for r in rules])
-    reqs = format_requests(offers_ws.id, rules)
+    reqs = format_requests(offers_ws.id, rules, sep)
     if reqs:
         sh.batch_update({"requests": reqs})
     print(f"Formatowanie warunkowe Ofert: dodano {len(reqs)} reguł.")
@@ -275,7 +276,7 @@ def migrate(sh, cfg, today: str | None = None):
     ws = sh.worksheet(cfg["sheet"]["tab_offers"])
     reqs = migration_requests(ws.row_values(1), ws.id)
     if not reqs:
-        print("Migracja: nagłówki Ofert są już w nowym układzie, nic do zrobienia.")
+        print("Migracja: kolumny Ofert są już w nowym układzie, domykam resztę (walidacje, formaty, widoki, lustro, backfill).")
     else:
         titles = {w.title for w in sh.worksheets()}
         name = f"Oferty_backup_{today}"
@@ -294,8 +295,8 @@ def migrate(sh, cfg, today: str | None = None):
             if name in ("Poziom", "AI") and name not in row1:
                 ws.update_cell(1, i + 1, name)
         print(f"Migracja: {len(reqs)} operacji na kolumnach, usunięto {len(stale)} widoków filtrów.")
-        init(sh, cfg)
-        refresh_mirror(sh, ws, sheet_locale(sh))
+    init(sh, cfg)                                       # idempotentne: walidacje, formaty, widoki, lustro (także po przerwanej migracji)
+    refresh_mirror(sh, ws, sheet_locale(sh))
     headers = ws.row_values(1)
     if headers != HEADERS:
         raise RuntimeError(f"Nagłówki Ofert po migracji: {headers}")
@@ -406,7 +407,7 @@ def init(sh, cfg, skills_csv="skills.csv"):
                                        "properties": {"hiddenByUser": True}, "fields": "hiddenByUser"}},
     ]})
 
-    ensure_formats(sh, ws)
+    ensure_formats(sh, ws, arg_separator(locale))
     ensure_descriptions_tab(sh, cfg)
     ensure_sources_tab(sh, cfg)
     ensure_filter_views(sh, ws)

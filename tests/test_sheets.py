@@ -209,7 +209,10 @@ def test_format_rules_are_added_in_priority_order_and_only_once():
     rules = [r["addConditionalFormatRule"] for r in reqs]
     assert [r["index"] for r in rules] == [0, 1, 2]                    # szarość (zamknięte) > pomarańcz Senior+ > fiolet AI
     gray, orange, purple = (r["rule"] for r in rules)
-    assert "Odrzucone" in gray["booleanRule"]["condition"]["values"][0]["userEnteredValue"]
+    assert gray["booleanRule"]["condition"]["values"][0]["userEnteredValue"] == \
+        '=OR($E2="Przyjęta",$E2="Odrzucone",$E2="Rezygnacja",$E2="Ghosting")'
+    pl = sheets.format_requests(7, [], ";")[0]["addConditionalFormatRule"]["rule"]["booleanRule"]["condition"]["values"][0]
+    assert pl["userEnteredValue"] == '=OR($E2="Przyjęta";$E2="Odrzucone";$E2="Rezygnacja";$E2="Ghosting")'   # locale pl
     assert orange["ranges"] == [{"sheetId": 7, "startRowIndex": 1, "startColumnIndex": 10, "endColumnIndex": 11}]
     assert orange["booleanRule"]["condition"] == {"type": "TEXT_EQ", "values": [{"userEnteredValue": "Senior+"}]}
     assert purple["ranges"] == [{"sheetId": 7, "startRowIndex": 1, "startColumnIndex": 0, "endColumnIndex": 19}]
