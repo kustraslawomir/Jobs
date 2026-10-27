@@ -1,0 +1,35 @@
+# Co zbierać. Zmieniasz tutaj, nie w kodzie.
+
+filters:
+  # oferta musi mieć w tytule którekolwiek z tych słów
+  title_any: ["android", "kotlin", "mobile"]
+  # odrzuć, jeśli tytuł zawiera którekolwiek z tych słów
+  title_exclude: ["junior", "intern", "staż", "trainee", "ios developer", "react native"]
+  remote_only: true
+  # minimalne widełki "do" w PLN / miesiąc (B2B lub UoP); 0 = nie filtruj
+  # oferty bez widełek przechodzą (flaga "brak widełek" w kolumnie Widełki)
+  min_salary_to_pln: 18000
+  # odrzuć oferty z matchem poniżej progu (0-1); 0 = nie filtruj
+  min_match: 0.4
+
+sources:
+  justjoinit: true
+  nofluffjobs: true
+
+dedup:
+  # podobieństwo tytułów (0-100) przy tej samej firmie, od którego uznajemy duplikat
+  fuzzy_title_threshold: 90
+
+sheet:
+  tab_offers: "Oferty"
+  tab_skills: "Słownik"
+  followup_days: 7
+  soon_days: 2
+
+notify:
+  # Telegram: ustaw sekrety TELEGRAM_TOKEN i TELEGRAM_CHAT_ID, inaczej pomija
+  telegram: true
+  min_match_to_notify: 0.6
+
+# przeliczanie walut na PLN (orientacyjnie, do filtra widełek)
+fx_to_pln: {PLN: 1, EUR: 4.3, USD: 4.0, GBP: 5.0, CHF: 4.5}

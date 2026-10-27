@@ -1,0 +1,90 @@
+kategoria,keyword,wariant2,wariant3,wariant4,mam,waga,komentarz
+Język,Kotlin,,,,Tak,3,Główny język
+Język,Java,,,,Częściowo,2,W CV jako „earlier stack”
+Język,Kotlin Multiplatform,KMP,KMM,Compose Multiplatform,Nie,2,
+Język,Dart,,,,Tak,1,
+Język,Swift,SwiftUI,,,Nie,1,
+UI,Jetpack Compose,Compose,,,Tak,3,
+UI,XML layouts,View system,Android Views,XML,Tak,2,"Na pewno robiłeś, ale CV tego nie mówi"
+UI,Material Design,Material 3,Material You,,Tak,1,Do potwierdzenia
+UI,Custom views,custom view,Canvas,,Do weryfikacji,1,
+UI,Animations,animation,Lottie,MotionLayout,Tak,1,
+UI,Accessibility,a11y,TalkBack,WCAG,Do weryfikacji,1,
+UI,Jetpack Navigation,Navigation Component,Compose Navigation,,Tak,1,Do potwierdzenia
+Architektura,MVVM,,,,Tak,3,
+Architektura,MVI,,,,Do weryfikacji,2,Często w ofertach na seniora
+Architektura,Clean Architecture,clean arch,,,Do weryfikacji,2,
+Architektura,MVP,,,,Tak,1,
+Architektura,Modularization,modularisation,multi-module,modularized,Tak,2,
+Architektura,SOLID,design patterns,,,Do weryfikacji,1,
+Asynchroniczność,Coroutines,coroutine,,,Tak,3,
+Asynchroniczność,Flow,StateFlow,SharedFlow,Kotlin Flow,Tak,2,
+Asynchroniczność,RxJava,RxKotlin,Rx,,Tak,1,Starszy stack
+Asynchroniczność,WorkManager,,,,Tak,1,
+Asynchroniczność,Foreground service,background processing,background services,services,Tak,1,"Call tracking, GPS tracking"
+DI,Hilt,,,,Tak,2,
+DI,Dagger,Dagger 2,Dagger2,,Do weryfikacji,2,Hilt stoi na Daggerze – ustaw wg siebie
+DI,Koin,,,,Do weryfikacji,1,
+Dane,Room,,,,Tak,2,Uwaga: „room” łapie też „room for growth”
+Dane,SQLite,SQL,,,Do weryfikacji,1,
+Dane,DataStore,SharedPreferences,,,Tak,1,
+Dane,SQLDelight,Realm,ObjectBox,,Nie,1,
+Dane,Offline-first,offline mode,offline maps,offline,Tak,1,
+Dane,Paging,Paging 3,Paging3,pagination,Do weryfikacji,1,
+Sieć,Retrofit,,,,Tak,2,
+Sieć,OkHttp,,,,Tak,1,
+Sieć,REST,REST API,RESTful,,Tak,2,
+Sieć,GraphQL,Apollo,,,Do weryfikacji,1,
+Sieć,Ktor,,,,Do weryfikacji,1,
+Sieć,WebSocket,WebSockets,Socket.IO,,Do weryfikacji,1,
+Sieć,kotlinx.serialization,Moshi,Gson,JSON,Tak,1,Do potwierdzenia
+Testy,Unit tests,unit testing,unit test,testy jednostkowe,Do weryfikacji,3,BRAK W CV – częsty must-have
+Testy,JUnit,JUnit4,JUnit5,JUnit 5,Do weryfikacji,2,
+Testy,MockK,Mockito,,,Do weryfikacji,2,
+Testy,Espresso,UI tests,UI testing,instrumented tests,Do weryfikacji,2,
+Testy,Compose testing,screenshot tests,Paparazzi,Roborazzi,Do weryfikacji,1,
+Testy,TDD,test driven,,,Do weryfikacji,1,
+Testy,Turbine,,,,Do weryfikacji,1,
+CI/CD i jakość,CI/CD,continuous integration,continuous delivery,CI pipeline,Tak,2,CI na Bitrise
+CI/CD i jakość,Bitrise,,,,Tak,1,
+CI/CD i jakość,GitHub Actions,,,,Do weryfikacji,1,
+CI/CD i jakość,GitLab,GitLab CI,,,Do weryfikacji,1,
+CI/CD i jakość,Jenkins,,,,Do weryfikacji,1,
+CI/CD i jakość,Fastlane,,,,Do weryfikacji,1,
+CI/CD i jakość,Gradle,Gradle KTS,Kotlin DSL,version catalog,Tak,2,
+CI/CD i jakość,Detekt,ktlint,static analysis,SonarQube,Do weryfikacji,1,"Skille w Claude Code z regułami jakości – nazwij narzędzia w CV, jeśli używasz"
+CI/CD i jakość,Code review,code reviews,,,Tak,1,
+CI/CD i jakość,Git,,,,Tak,1,
+CI/CD i jakość,Performance,profiling,LeakCanary,memory leaks,Do weryfikacji,1,
+CI/CD i jakość,ProGuard,R8,obfuscation,code shrinking,Do weryfikacji,1,
+Usługi / SDK,Firebase,,,,Tak,1,
+Usługi / SDK,Crashlytics,Firebase Crashlytics,,,Tak,1,
+Usługi / SDK,Push notifications,FCM,Cloud Messaging,OneSignal,Tak,2,
+Usługi / SDK,Remote Config,feature flags,A/B testing,,Do weryfikacji,1,
+Usługi / SDK,Analytics,Firebase Analytics,Amplitude,Mixpanel,Do weryfikacji,1,
+Usługi / SDK,Play Billing,in-app purchases,billing,subscriptions,Do weryfikacji,1,
+Usługi / SDK,Deep links,deep linking,app links,,Do weryfikacji,1,
+Usługi / SDK,Mapbox,Google Maps,Maps SDK,maps,Tak,2,
+Usługi / SDK,GPS,location services,geolocation,location,Tak,1,
+Usługi / SDK,Camera,CameraX,Camera2,,Tak,1,"AR, skanowanie QR"
+Usługi / SDK,ARCore,augmented reality,,,Tak,1,
+Usługi / SDK,ML Kit,TensorFlow Lite,TFLite,object recognition,Częściowo,1,
+Usługi / SDK,ExoPlayer,Media3,video,streaming,Do weryfikacji,1,
+Usługi / SDK,Onfido,KYC,identity verification,,Tak,1,
+Platformy,Wear OS,WearOS,Wear Compose,smartwatch,Tak,2,
+Platformy,Bluetooth,BLE,Bluetooth Low Energy,IoT,Do weryfikacji,2,"Częste w ofertach (IoT, medtech)"
+Platformy,NFC,,,,Do weryfikacji,1,
+Platformy,Android TV,Google TV,Leanback,,Nie,1,
+Platformy,Android Auto,Android Automotive,AAOS,automotive,Nie,1,
+Platformy,Samsung Knox,Knox,MDM,Android Enterprise,Tak,1,
+Cross-platform,Flutter,,,,Tak,2,
+Cross-platform,iOS,,,,Częściowo,1,"Przez Fluttera, nie natywnie"
+Cross-platform,React Native,,,,Nie,1,
+Publikacja,Google Play,Play Console,Play Store,Google Play Console,Tak,2,
+Publikacja,App Store,App Store Connect,TestFlight,,Tak,1,
+Procesy,Agile,Scrum,Kanban,sprint,Tak,1,
+Procesy,Jira,Confluence,,,Tak,1,Do potwierdzenia
+Procesy,Mentoring,mentor,tech lead,leadership,Do weryfikacji,2,Częste w ofertach na seniora
+Procesy,English,angielski,,,Tak,1,
+Procesy,German,niemiecki,Deutsch,,Nie,1,
+AI,Claude,Copilot,LLM,AI-assisted,Tak,1,

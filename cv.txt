@@ -1,0 +1,63 @@
+SŁAWOMIR KUSTRA
+Senior Android Developer | Kotlin, Jetpack Compose, Wear OS
+Rzeszów, Poland (remote)
+Android developer with 10 years of commercial experience (since 2016). Native Kotlin apps with Jetpack Compose, Coroutines/Flow and Hilt, plus several Flutter apps for iOS and Android. Most recently two years in a five-person Android team on an outdoor navigation app with 1M+ installs, working on both the phone app and its Wear OS app. Remote work in distributed, cross-functional teams for clients in the UK, Germany, Switzerland, Italy and Poland.
+PROFESSIONAL EXPERIENCE
+Android & Flutter Developer (contract, remote) – software houses and product companies 2016 – present
+• Worked in cross-functional teams with iOS, backend, QA, design and product: code reviews, sprint planning sessions, refinements, test planning and CI.
+• Native Android apps in Kotlin (Jetpack Compose, MVVM, Coroutines/Flow, Hilt), both new apps and codebases taken over from other teams.
+• Flutter apps for fintech, construction, sports and e-commerce clients, two built from scratch.
+• Sole Android/mobile developer on several projects, working closely with backend, iOS, QA and design.
+• App releases on Google Play and the App Store: publishing, store review, beta testing (TestFlight, Play testing tracks).
+• Daily AI-assisted workflow with Claude Code: building new features, refactoring, code review, navigating unfamiliar code and investigating backend errors on servers over SSH. Set up verification agents and custom skills that enforce code-quality rules.
+• Client names omitted due to NDAs.
+SELECTED PROJECTS (LAST 5 YEARS)
+Outdoor Navigation App (Android)
+Client: Mapping company (UK) | Industry: Outdoor navigation / Wearables | Duration: 2 years
+Stack: Kotlin, Jetpack Compose, Coroutines & Flow, Hilt, Room, Mapbox, Wear OS
+• Joined a five-person Android team maintaining an outdoor navigation app with 1M+ Google Play installs (topographic maps, route planning, GPS tracking, offline maps).
+• Brought existing features to Wear OS: Mapbox maps, activity tracking, route following, new watch UI.
+• Modularized the project and extracted shared code into a common Wear module reused by the watch app.
+• Updated the phone app for watch integration: phone-to-watch communication and push notifications.
+• Worked with dedicated QA on test planning; written requirements, CI on Bitrise.
+Partner Loyalty Program (Flutter)
+Client: Large construction company | Industry: Construction | Duration: 7 months
+Stack: Flutter, Dart, ValueNotifier
+• Loyalty app for partners and dealers, who collect points by scanning QR codes on products.
+• In-app store for exchanging points for prizes.
+• Sole mobile developer in a team with backend, QA and design.
+Instant Lending App (Flutter)
+Client: Fintech company (Italy) | Industry: Fintech / Lending | Duration: 6 months
+Stack: Flutter, Dart, Onfido SDK, REST, Retrofit, Firebase, OneSignal, Lottie
+• Built from scratch for iOS and Android: instant consumer loans (EUR 300 to 3,000).
+• Integrated the Onfido SDK for identity verification and built loan application submission to the bank.
+• Sole mobile developer in a team with backend, QA and design.
+• Product later acquired by an Italian bank.
+AR Brand-Engagement Game (Android)
+Client: Marketing technology company | Industry: Entertainment / AR | Duration: 18 months
+Stack: Kotlin, MVVM, ARCore, on-device object recognition
+• AR game for brand and product promotion.
+• Sole Android developer in a multidisciplinary team: researchers, backend, iOS, QA and graphic design.
+• Integrated object recognition models provided by the research team and rendered 3D characters on the camera preview with ARCore.
+• Interactive AR characters with animations driven by dialogue choices.
+• Other game modes: QR code scanning, location challenges, quizzes.
+OTHER PROJECTS
+• Call tracking app for a real estate CRM: call logging, automatic contact creation in the CRM, caller details during calls, agent location tracking. 100% crash-free users (Android vitals), 5.0 recent rating on Google Play. Also worked on the CRM mobile client.
+• Fashion shopping app (Flutter) for a Swiss retailer: native shell around a PWA store in 5 languages, 100,000+ Google Play installs, 4.6 rating from 1,300+ App Store reviews.
+• Virtual fiscal cash register (Android) for phones and tablets, reporting sales to Poland's Central Repository of Cash Registers (CRK).
+• Golf progress tracker (Flutter), built from scratch for iOS and Android.
+• Messaging apps on open-source forks (Signal, Element/Matrix): a messenger for a keypad-only feature phone and a token-gated chat app with crypto wallet login.
+• Hotel and medical facility service apps on company tablets managed with Samsung Knox.
+• Food delivery platform: apps for restaurants and couriers.
+• Other client apps: logistics (trucking and cargo orders), travel agency, social media.
+SKILLS
+Android: Kotlin, Jetpack Compose, Coroutines & Flow, Hilt, MVVM, Room, WorkManager, DataStore, Wear OS / Wear Compose, Mapbox, ARCore
+Networking & services: Retrofit/OkHttp, REST APIs, Firebase (Crashlytics, Cloud Messaging)
+Cross-platform: Flutter, Dart
+AI: Claude Code (daily use: subagents for solution verification, custom skills with code-quality rules), Claude, Gemini in Android Studio
+Tools: Android Studio, Git, Gradle, Bitrise (CI), Google Play Console, App Store Connect, TestFlight, macOS, Windows
+Earlier stack: Java, RxJava, MVP
+EDUCATION
+Engineer's degree (BEng), Computer Science, University of Rzeszów 2012 – 2016
+LANGUAGES
+Polish: native, English: professional working proficiency
