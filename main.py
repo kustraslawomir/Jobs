@@ -77,7 +77,7 @@ def main():
     session = requests.Session()
     session.headers["User-Agent"] = "Mozilla/5.0 (job-tracker; personal use)"
 
-    new, stats, errors = [], {}, []
+    new, stats, errors, dups = [], {}, [], []
     for name, enabled in cfg["sources"].items():
         if not enabled or name not in REGISTRY:
             continue
@@ -88,7 +88,13 @@ def main():
             continue
         st = stats.setdefault(name, {"pobrane": len(offers), "nowe": 0})
         for o in offers:
-            reason = passes_filters(o, cfg["filters"], cfg["fx_to_pln"]) or dd.check(o)
+            reason = passes_filters(o, cfg["filters"], cfg["fx_to_pln"])
+            if not reason:
+                hit = dd.check(o)
+                if hit:
+                    reason, matched, score = hit
+                    if matched is not None:
+                        dups.append(f'DUP [{reason}] "{o.company} – {o.title}" ~ "{matched}" ({score})')
             if reason:
                 st[reason] = st.get(reason, 0) + 1
                 continue
@@ -119,6 +125,8 @@ def main():
         notify(cfg, new)
 
     print("Statystyki:", stats)
+    if args.dry_run and dups:
+        print(f"Odrzucone duplikaty (max 30 z {len(dups)}):", *dups[:30], sep="\n")
     if errors:
         print("BŁĘDY ŹRÓDEŁ (sprawdź endpointy w DevTools):", *errors, sep="\n  ")
         # żeby GitHub wysłał maila o nieudanym runie, gdy WSZYSTKIE źródła padły

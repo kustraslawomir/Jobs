@@ -10,6 +10,8 @@ from rapidfuzz import fuzz
 
 _LEGAL = re.compile(r"\b(sp\.? ?z ?o\.? ?o\.?|s\.? ?a\.?|sp\.? ?k\.?|gmbh|ltd|inc|llc|s\.?r\.?o\.?|group|poland|polska)\b")
 _TITLE_NOISE = re.compile(r"\b(senior|sr|mid|regular|lead|principal|staff|junior|m/f|k/m|f/m/d|m/w/d|remote|zdalnie|100%)\b")
+# tylko oznaczenia płci/formy w nawiasach, np. (m/f), (k/m), (f/m/d), (m/w/d), (remote); technologie zostają
+_PAREN_NOISE = re.compile(r"\(\s*(?:[mfkwdx](?:\s*[/,|]\s*[mfkwdx])*|remote|zdalnie)\s*\)")
 _NON = re.compile(r"[^a-z0-9 ]+")
 _SP = re.compile(r"\s+")
 
@@ -30,7 +32,7 @@ def norm_company(s: str) -> str:
 
 def norm_title(s: str) -> str:
     s = _ascii((s or "").lower())
-    s = re.sub(r"\(.*?\)", " ", s)
+    s = _PAREN_NOISE.sub(" ", s)
     s = _TITLE_NOISE.sub(" ", s)
     return _SP.sub(" ", _NON.sub(" ", s)).strip()
 
@@ -40,29 +42,36 @@ def looks_like_agency(company: str) -> bool:
     return any(h in c for h in AGENCY_HINTS)
 
 
+SAME_SOURCE = "duplikat w tym samym źródle"
+OTHER_SOURCE = "duplikat z innego portalu / już w arkuszu"
+
+
 class Deduper:
     def __init__(self, existing: list[tuple[str, str, str]], threshold: int = 90):
         """existing: [(klucz, firma, stanowisko), ...] z arkusza."""
         self.threshold = threshold
         self.keys = {k for k, _, _ in existing if k}
-        self.by_company: dict[str, list[str]] = {}
-        for _, comp, title in existing:
-            self._remember(comp, title)
+        # firma -> [(znormalizowany tytuł, oryginalny tytuł, źródło, czy z arkusza)]
+        self.by_company: dict[str, list[tuple[str, str, str, bool]]] = {}
+        for key, comp, title in existing:
+            self._remember(comp, title, key.split(":", 1)[0], True)
 
-    def _remember(self, company, title):
-        self.by_company.setdefault(norm_company(company), []).append(norm_title(title))
+    def _remember(self, company, title, source, from_sheet):
+        self.by_company.setdefault(norm_company(company), []).append(
+            (norm_title(title), title, source, from_sheet))
 
-    def check(self, offer) -> str | None:
-        """None = nowa oferta. Inaczej powód odrzucenia."""
+    def check(self, offer) -> tuple[str, str | None, int | None] | None:
+        """None = nowa oferta. Inaczej (powód, tytuł z którym się zmatchował, score)."""
         if offer.key in self.keys:
-            return "to samo ID"
-        comp = norm_company(offer.company)
+            return "to samo ID", None, None
         t = norm_title(offer.title)
-        for other in self.by_company.get(comp, []):
-            if fuzz.token_set_ratio(t, other) >= self.threshold:
-                return "ta sama firma i stanowisko (inny portal)"
+        for other, raw, source, from_sheet in self.by_company.get(norm_company(offer.company), []):
+            score = fuzz.token_sort_ratio(t, other)
+            if score >= self.threshold:
+                same = source == offer.source and not from_sheet
+                return (SAME_SOURCE if same else OTHER_SOURCE), raw, round(score)
         return None
 
     def add(self, offer):
         self.keys.add(offer.key)
-        self._remember(offer.company, offer.title)
+        self._remember(offer.company, offer.title, offer.source, False)
