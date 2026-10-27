@@ -15,11 +15,8 @@ import yaml
 
 import ats
 from dedup import Deduper, SURE_BY_CONTENT, looks_like_agency, norm_description
-from sources import REGISTRY
-from sources import justjoinit, nofluffjobs
+from sources import DETAILS, REGISTRY
 
-DETAILS = {"nofluffjobs": nofluffjobs.details if nofluffjobs.FETCH_DETAILS else None,
-           "justjoinit": justjoinit.details}
 
 
 def _has_word(title: str, word: str) -> bool:

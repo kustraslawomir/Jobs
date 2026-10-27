@@ -6,11 +6,9 @@ Odpowiedź: {"data": [...], "meta": {"totalItems", "next": {"cursor"}}}
 Filtra remote po stronie API nie ma (parametr ignorowany) – remote filtruje main.py.
 Ta sama oferta w kilku miastach to JEDEN rekord z listą "locations", więc tu nie ma duplikatów per miasto.
 """
-import html
-import json
-import re
 import time
 from models import Offer, Pay
+from .htmlutil import job_posting_description as _job_posting_description, page_text
 
 LIST_URL = "https://justjoin.it/api/candidate-api/offers"
 PARAMS = {"keywords": "android", "keywordType": "any", "sortBy": "publishedAt",
@@ -93,32 +91,10 @@ def fetch(session) -> list[Offer]:
     return out
 
 
-_LD_JSON = re.compile(r'<script[^>]*application/ld\+json[^>]*>(.*?)</script>', re.S | re.I)
-_DROP = re.compile(r"<(script|style)\b.*?</\1>", re.S | re.I)
-_TAG = re.compile(r"<[^>]+>")
-
-
-def _clean(text: str) -> str:
-    return re.sub(r"\s+", " ", html.unescape(_TAG.sub(" ", text))).strip()
-
-
-def _job_posting_description(page: str) -> str:
-    """Opis z JSON-LD (schema.org JobPosting): stabilniejszy niż klasy CSS czy wewnętrzny stan Next.js."""
-    for m in _LD_JSON.finditer(page):
-        try:
-            data = json.loads(m.group(1))
-        except ValueError:
-            continue
-        for node in data if isinstance(data, list) else [data]:
-            if isinstance(node, dict) and node.get("@type") == "JobPosting" and node.get("description"):
-                return _clean(str(node["description"]))
-    return ""
-
-
 def details(session, offer: Offer) -> str:
-    """Pełny opis do ATS: tytuł + skille z listy + tekst oferty. Wołane tylko dla ofert po filtrach i dedupie."""
+    """Pełny opis do ATS: tytuł + skille z listy + tekst oferty. Wołane tylko dla ofert po filtrach."""
     r = session.get(offer.url, headers={"Accept": "text/html"}, timeout=30)
     r.raise_for_status()
-    text = _job_posting_description(r.text) or _clean(_DROP.sub(" ", r.text))   # fallback: cały tekst strony
+    text = _job_posting_description(r.text) or page_text(r.text)      # fallback: cały tekst strony
     time.sleep(1.5)
     return f"{offer.description} {text}"

@@ -23,6 +23,7 @@ filters:
 sources:
   justjoinit: true
   nofluffjobs: true
+  czyjesteldorado: true
 
 dedup:
   # tytuły (0-100): pewny duplikat przy tej samej firmie / możliwy duplikat przy tej samej firmie / minimum dla porównania treści
