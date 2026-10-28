@@ -15,7 +15,8 @@ import json
 import re
 import time
 from models import Offer, Pay
-from .htmlutil import clean_text, job_posting_description, page_text
+from seen import iso_date
+from .htmlutil import clean_text, job_posting, job_posting_description, page_text
 
 LIST_URL = "https://bulldogjob.pl/companies/jobs/s/skills,{skill}"
 OFFER_URL = "https://bulldogjob.pl/companies/jobs/{id}"
@@ -85,5 +86,6 @@ def details(session, offer: Offer) -> str:
     r = session.get(offer.url, headers={"Accept": "text/html"}, timeout=30)
     r.raise_for_status()
     text = job_posting_description(r.text) or page_text(r.text)
+    offer.published = iso_date((job_posting(r.text) or {}).get("datePosted")) or offer.published    # lista nie podaje daty
     time.sleep(1.5)
     return f"{offer.description} {text}"

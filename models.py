@@ -51,6 +51,8 @@ class Offer:
     note: str = ""
     level: str = ""                # "Mid" | "Senior" | "Senior+" | "?" (level.py)
     ai: str = ""                   # "produkt (llm)" / "workflow (...)" / "" (ai_flag.py)
+    published: str = ""            # data publikacji z portalu RRRR-MM-DD (najwcześniejsza, jaką portal podaje)
+    renewed: str = ""              # najnowsza data z portalu (odświeżenie / bump); puste = brak
     workload: str = ""             # "Pełny etat" | "Część etatu (1/2)" | "Zlecenie / kontrakt" | "" (employment.py)
 
     @property

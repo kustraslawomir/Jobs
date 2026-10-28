@@ -17,6 +17,7 @@ import ai_flag
 import ats
 import employment
 import level
+import seen
 from dedup import Deduper, SURE_BY_CONTENT, looks_like_agency, norm_description
 from sources import DETAILS, REGISTRY
 from contracts import is_known
@@ -121,7 +122,11 @@ def add_manual(cfg, cv_text: str, url: str | None, text: str | None):
         return
     o.match, o.gaps, o.add_to_cv, o.n_req = ats.evaluate(o.description, skills, cv_text)
     finish(o, verdict, cfg, extra)
-    written = sheets.append_offers(ws, [o], dt.date.today().isoformat(), last_row)
+    today = dt.date.today().isoformat()
+    history = sheets.read_seen(sh, cfg)
+    history.record(o, o.key, today)
+    written = sheets.append_offers(ws, [o], today, last_row, sheets.arg_separator(sheets.sheet_locale(sh)))
+    sheets.write_seen(sh, cfg, history)
     sheets.append_descriptions(sh, cfg, [(o.key, norm_description(o.description))])
     print(f"Dodano ręcznie: {o.company} – {o.title} | match {'–' if o.match is None else f'{o.match:.0%}'} | "
           f"poziom {o.level} | AI {o.ai or '-'} | wymiar {o.workload or '-'} | notatki: {o.note or '-'}")
@@ -167,6 +172,7 @@ def main():
         with open("skills.csv", encoding="utf-8") as fh:
             skill_rows = list(csv.reader(fh))[1:]
         existing, last_row, ws, descriptions, previous = [], 1, None, {}, {}
+        all_rows, history, locale = [], seen.History(), "en_US"
     else:
         import sheets
         sh = sheets.connect()
@@ -187,7 +193,9 @@ def main():
         ws = sh.worksheet(cfg["sheet"]["tab_offers"])
         sheets.check_layout(ws)
         skill_rows = sheets.read_skills(sh, cfg)
-        existing, last_row = sheets.read_existing(ws)
+        all_rows = ws.get_all_values()[1:]
+        existing, last_row = sheets.existing_from_rows(all_rows)
+        history, locale = sheets.read_seen(sh, cfg), sheets.sheet_locale(sh)
         descriptions = sheets.read_descriptions(sh, cfg)
         previous = sheets.last_source_runs(sh, cfg)
 
@@ -197,6 +205,7 @@ def main():
     session.headers["User-Agent"] = "Mozilla/5.0 (job-tracker; personal use)"
 
     new, stats, errors, events, runs, unknown = [], {}, [], [], [], set()
+    returned = {}                                    # źródło -> klucze z UDANEGO runu (do wykrywania zniknięć)
     today = dt.date.today().isoformat()
     for name in active_sources(cfg, args.runner):
         try:
@@ -206,10 +215,14 @@ def main():
             runs.append((name, today, 0, 0, str(e)[:300]))
             continue
         st = stats.setdefault(name, {"pobrane": len(offers), "nowe": 0})
+        if not is_failed(len(offers), ""):
+            returned[name] = {o.key for o in offers}
         detail_fn = DETAILS.get(name)
         unknown |= {(c, name) for o in offers for c in o.contract if not is_known(c)}
         for o in offers:
-            if dd.has_key(o):
+            known = history.canonical_of(o.key)
+            if known is not None or dd.has_key(o):          # już w arkuszu albo wcześniej rozpoznana jako duplikat
+                history.record(o, known or o.key, today)
                 st["to samo ID"] = st.get("to samo ID", 0) + 1
                 continue
             reason = passes_filters(o, cfg["filters"], cfg["fx_to_pln"])
@@ -224,6 +237,7 @@ def main():
             verdict = dd.check(o)
             if verdict.rejected:
                 m = verdict.rejected
+                history.record(o, m.key or o.key, today)    # duplikat też wydłuża historię oferty, z którą się zmatchował
                 st[m.reason] = st.get(m.reason, 0) + 1
                 events.append(("DUP", f"[{m.reason}] {m.describe(o)}", m.reason))
                 continue
@@ -236,6 +250,7 @@ def main():
                 st["za niski match"] = st.get("za niski match", 0) + 1
                 continue
             finish(o, verdict, cfg)
+            history.record(o, o.key, today)
             dd.add(o)
             new.append(o)
             st["nowe"] += 1
@@ -247,7 +262,18 @@ def main():
             print(f"{m:>5}  {o.level:<7} {o.ai or '-':<26} {o.company} – {o.title} | {o.salary_text()} | wym.: {o.n_req} | luki: {', '.join(o.gaps) or '-'}")
     else:
         import sheets
-        written = sheets.append_offers(ws, new, today, last_row)
+        history.mark_runs(returned)
+        summaries = history.summaries(cfg["ghost"]["no_disappearance"])
+        for o in new:
+            o.note = seen.merge_note(o.note, seen.tokens(summaries[o.key]))
+        written = sheets.append_offers(ws, new, today, last_row, sheets.arg_separator(locale))
+        updates = sheets.activity_updates(all_rows, summaries, today)
+        if updates:
+            ws.batch_update(updates, value_input_option="RAW")
+        sheets.write_seen(sh, cfg, history)
+        gone = sum(1 for s in summaries.values() if s.disappeared)
+        print(f"Historia: {len(history.by_key)} wpisów, zaktualizowano {len(updates)} komórek (Aktywna / Notatki), "
+              f"zniknęło ofert: {gone}")
         print(f"Zapisano do Ofert: {len(written)} wierszy (od wiersza {last_row + 1}); match w kolejności zapisu: "
               + ", ".join("–" if o.match is None else f"{o.match:.0%}" for o in written))
         sheets.append_descriptions(sh, cfg, [(o.key, norm_description(o.description)) for o in new])

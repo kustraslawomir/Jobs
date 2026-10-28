@@ -12,6 +12,7 @@ Pełny opis: JSON-LD JobPosting ze strony oferty (details()).
 import time
 from models import Offer, Pay
 from contracts import normalize
+from seen import iso_date
 from .htmlutil import array_after, job_posting_description, next_flight, page_text
 
 SEARCH_URL = "https://czyjesteldorado.pl/search"
@@ -57,7 +58,7 @@ def to_offer(item: dict) -> Offer | None:
         company=pick(item, "company.name", default="?"), title=pick(item, "title", default="?"),
         remote=remote, location=", ".join(item.get("cities") or []),
         contract=contracts, pay=pays, seniority=item.get("seniority") or "",
-        employment=item.get("workloadTypes") or [],
+        employment=item.get("workloadTypes") or [], published=iso_date(item.get("postedAt")),
         description=" ".join([pick(item, "title", default="")] + list(item.get("keywords") or []) + texts),
     )
 

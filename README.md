@@ -30,7 +30,7 @@ export GOOGLE_SA_JSON="$(cat klucz.json)"
 export SHEET_ID=...
 python main.py --init
 ```
-Tworzy zakładki **Oferty** (20 kolumn A–T, lista statusów i poziomów, widoki filtrów, ukryta kolumna Klucz), **Aplikowane** (lustro wysłanych ofert), **Źródła**, ukrytą **_opisy** i **Słownik** (89 skilli). W Słowniku ustaw „Mam?” przy żółtych pozycjach „Do weryfikacji”, bo do tego czasu liczą się jako braki.
+Tworzy zakładki **Oferty** (22 kolumny A–V, lista statusów i poziomów, widoki filtrów, ukryta kolumna Klucz), **Aplikowane** (lustro wysłanych ofert), **Źródła**, ukrytą **_opisy** i **Słownik** (89 skilli). W Słowniku ustaw „Mam?” przy żółtych pozycjach „Do weryfikacji”, bo do tego czasu liczą się jako braki.
 
 ### 5. Sprawdzenie źródeł (WAŻNE)
 Portale nie mają oficjalnego API, więc adresy i pola w `sources/*.py` to ich wewnętrzne endpointy strony i **trzeba je zweryfikować**:
@@ -50,6 +50,7 @@ Potem: zakładka **Actions → Zbieranie ofert → Run workflow**, żeby odpali�
 - **AI** (`ai_flag.py`, sekcja `ai` w `config.yaml`): kolumna za Poziomem, wartość „produkt”, „workflow” albo „produkt + workflow” z maks. 3 trafionymi słowami, np. „produkt + workflow (llm, copilot)”. Listy słów (regexy na tekście bez ogonków i interpunkcji, całe słowa) edytujesz w configu. Wiersz z AI jest jasnofioletowy (zamknięte statusy zostają szare), a widok filtra „AI” pokazuje tylko oferty z AI i niezamknięte statusy, po Match malejąco.
 - **LinkedIn Jobs** (`sources/linkedin.py`, runner lokalny): publiczny endpoint „guest” bez logowania, oferty zdalne z Polski z ostatnich 30 dni, od najnowszych. Brak widełek i formy współpracy w danych LinkedIn. Postów LinkedIn nie czytamy (wymagają zalogowania).
 - **Wymiar** (`employment.py`, kolumna za Widełkami): „Pełny etat”, „Część etatu (1/2)” (1/4, 1/2, „N h/tydz.”, part-time), „Zlecenie / kontrakt” albo pusto = brak informacji. Rozpoznawany z pól portali i z tekstu. Część etatu i zlecenia omijają próg minimalnych widełek. Widok filtra „Część etatu / zlecenia” pokazuje Wymiar niepusty i inny niż „Pełny etat”.
+- **Wiek i aktywność ogłoszeń** (`seen.py`, ukryta zakładka `_widziane`, sekcja `ghost` w configu): każde wystąpienie oferty w każdym źródle (także duplikaty, przypisane do oferty, z którą się zmatchowały) jest zapisywane z datą publikacji z portalu, pierwszym i ostatnim widzeniem i liczbą odświeżeń. „Wiek (dni)” to formuła: dziś minus najwcześniejsza data z całej grupy (publikacja albo pierwsze widzenie, po wszystkich portalach), więc nie psuje jej sortowanie ani ręczne wiersze. „Aktywna” to „Tak” albo „Zniknęła RRRR-MM-DD”: oferta znika dopiero po 3 kolejnych udanych runach każdego jej źródła bez niej; źródło z błędem albo nieuruchomione (runner offline) się nie liczy. LinkedIn (okno 30 dni) i oferty „ręcznie” nigdy nie „znikają”. W Notatkach pojawia się „Odświeżana N×” (N ≥ 2) i „Wisi na K portalach” (K ≥ 3). Kolor Wieku: ≤ 14 dni zielony, > 45 pomarańczowy, > 90 czerwony. Widok „Świeże”: Aktywna = Tak, wiek ≤ 30, Do wysłania, po Match.
 - **Ręczne dodanie oferty** (np. z posta LinkedIn, z telefonu): Actions → Run workflow → mode=`add`, wklej link w `url` i/lub opis w `text` (lokalnie: `python main.py --add --url <link> [--text "<opis>"]`). Bez filtrów, ale z dedupem i ATS; źródło „ręcznie”. Bez `text` skrypt próbuje pobrać stronę (bez logowania); gdy się nie uda, wiersz dostaje link i notatkę „Uzupełnij opis ręcznie”.
 - **ATS**: słownik czytany z zakładki Słownik, CV z `cv.txt`. Wynik trafia do kolumn Match, Luki i Dopisz do CV.
 - Wiersze w arkuszu możesz edytować i sortować dowolnie. Skrypt tylko dopisuje na dole i nigdy nie nadpisuje.
@@ -107,12 +108,12 @@ Niektóre portale (teraz czyjesteldorado.pl) blokują adresy IP serwerowni GitHu
 
 ## Układ kolumn Ofert i migracja
 
-Kolejność kolumn (A–T): Dodano, Firma, Stanowisko, Link, Status, Wysłano CV, Rozmowa, Następny krok, Termin, Match, Poziom, AI, Widełki / forma, Wymiar, Kontakt, Luki, Dopisz do CV, Notatki, Źródło, Klucz (ukryta). Kolumny Alert już nie ma.
+Kolejność kolumn (A–V): Dodano, Firma, Stanowisko, Link, Wiek (dni), Aktywna, Status, Wysłano CV, Rozmowa, Następny krok, Termin, Match, Poziom, AI, Widełki / forma, Wymiar, Kontakt, Luki, Dopisz do CV, Notatki, Źródło, Klucz (ukryta). Kolumny Alert już nie ma.
 
 Skrypt nie zapisuje do arkusza, którego nagłówki Ofert różnią się od tego układu (zatrzymuje się z błędem), żeby dane nie trafiły do złych kolumn. Stary arkusz przestawia tryb **migrate** (Actions → Run workflow → `migrate`, lokalnie `python main.py --migrate`):
 - robi kopię zakładki jako `Oferty_backup_<data>`,
 - zmienia tylko strukturę kolumn (usunięcie Alert, wstawienie pustych kolumn Poziom i AI przez insertDimension, przeniesienie Widełek i Kontaktu), nie przepisuje danych, więc ręczne wpisy zostają,
 - uzupełnia puste komórki AI (tylko tam, gdzie coś wykryto) oraz Poziomu na podstawie opisów z ukrytej zakładki _opisy (po Kluczu; brak opisu = „?”) i dopisuje powód do Notatek, uzupełnia też Wymiar z opisów; komórki z już wpisanym Poziomem zostają,
 - jest idempotentna: w nowym układzie nic nie robi, w układzie pośrednim kończy brakujące kroki,
-- odtwarza widoki filtrów (A:T, w tym „AI” i „Część etatu / zlecenia”), dodaje listę wartości i pomarańczowe tło dla Senior+ w kolumnie Poziom, fiolet dla wierszy z AI (szarość zamkniętych statusów ma pierwszeństwo; jeśli arkusz nie ma takiej reguły, zostanie dodana), odświeża Aplikowane (A:R).
+- odtwarza widoki filtrów (A:V, w tym „AI”, „Część etatu / zlecenia” i „Świeże”), dodaje listę wartości i pomarańczowe tło dla Senior+ w kolumnie Poziom, fiolet dla wierszy z AI (szarość zamkniętych statusów ma pierwszeństwo; jeśli arkusz nie ma takiej reguły, zostanie dodana), odświeża Aplikowane (A:T).
 Kopię (`Oferty_backup_*`) usuń ręcznie po sprawdzeniu arkusza.

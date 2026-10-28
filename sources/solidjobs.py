@@ -11,6 +11,7 @@ Link do oferty to adres zwrócony przez API (zawiera nasz identyfikator kampanii
 """
 import time
 from models import Offer, Pay
+from seen import iso_date
 from .htmlutil import clean_text
 
 LIST_URL = "https://solid.jobs/public-api/offers/IT"
@@ -49,7 +50,7 @@ def to_offer(item: dict) -> Offer | None:
         company=item.get("company") or "?", title=item.get("title") or "?",
         remote=bool(item.get("isRemote")), location=", ".join(item.get("locations") or []),
         pay=pays, seniority=item.get("experienceLevel") or "",
-        employment=item.get("contractTime") or "",
+        employment=item.get("contractTime") or "", published=iso_date(item.get("validFrom")),
         description=" ".join([item.get("title") or ""] + skills + [clean_text(item.get("description") or "")]),
     )
 

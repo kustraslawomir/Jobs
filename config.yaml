@@ -92,11 +92,17 @@ ai:
              "(?:ai|coding|software development|sdlc) agent", "agent\\w* (?:for|in) (?:software|development|sdlc)",
              "prompt engineering"]
 
+# wiek i aktywność ogłoszeń (zakładka _widziane, kolumny Wiek (dni) i Aktywna, moduł seen.py)
+ghost:
+  # źródła, których brak oferty NIE oznacza zniknięcia: LinkedIn pokazuje tylko ostatnie 30 dni, "ręcznie" nie jest zbierane
+  no_disappearance: ["linkedin", "ręcznie"]
+
 sheet:
   tab_offers: "Oferty"
   tab_skills: "Słownik"
   tab_descriptions: "_opisy"
   tab_sources: "Źródła"
+  tab_seen: "_widziane"
 
 notify:
   # Telegram: ustaw sekrety TELEGRAM_TOKEN i TELEGRAM_CHAT_ID, inaczej pomija

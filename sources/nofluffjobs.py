@@ -4,6 +4,7 @@ DO WERYFIKACJI w DevTools: SEARCH_URL, body zapytania i nazwy pól w odpowiedzi.
 """
 import time
 from models import Offer
+from seen import iso_date
 from .htmlutil import clean_text
 
 SEARCH_URL = "https://nofluffjobs.com/api/search/posting"
@@ -33,6 +34,7 @@ def fetch(session) -> list[Offer]:
             salary_from=pick(it, "salary.from"), salary_to=pick(it, "salary.to"),
             currency=str(pick(it, "salary.currency", default="")).upper(),
             contract=[typ] if typ else [], seniority=pick(it, "seniority", default=[]),
+            published=iso_date(pick(it, "posted")), renewed=iso_date(pick(it, "renewed")),
             description=" ".join([pick(it, "title", default=""), str(pick(it, "technology", default=""))]),
         ))
     return out

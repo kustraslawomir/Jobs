@@ -8,16 +8,27 @@ import gspread
 import ai_flag
 import employment
 import level
+import seen
 
-HEADERS = ["Dodano", "Firma", "Stanowisko", "Link", "Status", "Wysłano CV", "Rozmowa",
+HEADERS = ["Dodano", "Firma", "Stanowisko", "Link", "Wiek (dni)", "Aktywna", "Status", "Wysłano CV", "Rozmowa",
            "Następny krok", "Termin", "Match", "Poziom", "AI", "Widełki / forma", "Wymiar", "Kontakt", "Luki", "Dopisz do CV",
            "Notatki", "Źródło", "Klucz"]
 COL = {h: i for i, h in enumerate(HEADERS)}           # 0-based
 STATUSES = ["Do wysłania", "Wysłane", "Odpowiedź", "Rozmowa", "Zadanie domowe", "Oferta",
             "Przyjęta", "Odrzucone", "Rezygnacja", "Ghosting"]
 MIRROR_TAB = "Aplikowane"
+def col_letter(i: int) -> str:
+    """Litera kolumny dla indeksu 0-based (0 -> A)."""
+    out, i = "", i + 1
+    while i:
+        i, r = divmod(i - 1, 26)
+        out = chr(65 + r) + out
+    return out
+
+
+SEEN_TAB = "_widziane"
 MIRROR_COLS = COL["Notatki"] + 1   # A:P z Ofert (do Notatek, bez Źródło i Klucz)
-MIRROR_LAST = gspread.utils.rowcol_to_a1(1, MIRROR_COLS).rstrip("0123456789")
+MIRROR_LAST = col_letter(MIRROR_COLS - 1)
 SOURCE_HEADERS = ["Źródło", "Data", "Pobrane", "Nowe", "Błąd"]
 SKILL_HEADERS = ["Kategoria", "Keyword", "Wariant 2", "Wariant 3", "Wariant 4", "Mam?", "Waga 1-3", "Komentarz"]
 
@@ -29,11 +40,13 @@ def connect():
 
 
 def mirror_formulas(sep: str) -> tuple[str, str]:
-    """Formuły lustra Ofert: bez wierszy "Do wysłania", "Rezygnacja" i pustych, najpierw ostatnio wysłane (kol. F, "Wysłano CV").
+    """Formuły lustra Ofert: bez wierszy "Do wysłania", "Rezygnacja" i pustych, najpierw ostatnio wysłane (kolumna "Wysłano CV").
     `sep` to separator argumentów: ";" dla arkuszy z polskim (i innym europejskim) locale, "," dla en_US."""
-    a1 = f"={{Oferty!A1:{MIRROR_LAST}1}}"          # goła referencja pokazałaby tylko A1; literał tablicowy rozlewa się na 16 kolumn
-    a2 = ('=IFERROR(SORT(FILTER(Oferty!A2:{c}{s}Oferty!E2:E<>""{s}Oferty!E2:E<>"Do wysłania"{s}'
-          'Oferty!E2:E<>"Rezygnacja"){s}6{s}FALSE){s}"Jeszcze nic nie wysłane")').format(s=sep, c=MIRROR_LAST)
+    a1 = f"={{Oferty!A1:{MIRROR_LAST}1}}"          # goła referencja pokazałaby tylko A1; literał tablicowy rozlewa się na MIRROR_COLS kolumn
+    st = col_letter(COL["Status"])
+    a2 = ('=IFERROR(SORT(FILTER(Oferty!A2:{c}{s}Oferty!{st}2:{st}<>""{s}Oferty!{st}2:{st}<>"Do wysłania"{s}'
+          'Oferty!{st}2:{st}<>"Rezygnacja"){s}{sort}{s}FALSE){s}"Jeszcze nic nie wysłane")').format(
+        s=sep, c=MIRROR_LAST, st=st, sort=COL["Wysłano CV"] + 1)
     return a1, a2
 
 
@@ -67,13 +80,14 @@ def header_request(sheet_id: int) -> dict:
                            "fields": "userEnteredFormat(textFormat,backgroundColor,wrapStrategy)"}}
 
 
+FRESH_DAYS = 30                                   # widok "Świeże": oferty nie starsze niż tyle dni
 CLOSED_STATUSES = ["Przyjęta", "Odrzucone", "Rezygnacja", "Ghosting"]      # proces zakończony
 FULL_TIME = employment.FULL
-FILTER_VIEW_TITLES = ("Do przejrzenia", "Najnowsze", "AI", "Część etatu / zlecenia")
+FILTER_VIEW_TITLES = ("Do przejrzenia", "Najnowsze", "AI", "Część etatu / zlecenia", "Świeże")
 
 
 def filter_view_requests(sheet_id: int, existing_titles) -> list[dict]:
-    """Widoki filtrów na całych kolumnach A:R zakładki Oferty; pomija te, które już istnieją (po nazwie).
+    """Widoki filtrów na całych kolumnach zakładki Oferty; pomija te, które już istnieją (po nazwie).
     "Do przejrzenia" pokazuje tylko "Do wysłania" i chowa Poziom "Senior+"."""
     rng = {"sheetId": sheet_id, "startColumnIndex": 0, "endColumnIndex": len(HEADERS)}
     views = [
@@ -85,6 +99,12 @@ def filter_view_requests(sheet_id: int, existing_titles) -> list[dict]:
         ("AI", {"sortSpecs": [{"dimensionIndex": COL["Match"], "sortOrder": "DESCENDING"}],
                 "criteria": {str(COL["AI"]): {"condition": {"type": "NOT_BLANK"}},
                              str(COL["Status"]): {"hiddenValues": CLOSED_STATUSES}}}),
+        ("Świeże", {"sortSpecs": [{"dimensionIndex": COL["Match"], "sortOrder": "DESCENDING"}],
+                    "criteria": {str(COL["Aktywna"]): {"condition": {"type": "TEXT_EQ", "values": [{"userEnteredValue": "Tak"}]}},
+                                 str(COL["Wiek (dni)"]): {"condition": {"type": "NUMBER_LESS_THAN_EQ",
+                                                                        "values": [{"userEnteredValue": str(FRESH_DAYS)}]}},
+                                 str(COL["Status"]): {"condition": {"type": "TEXT_EQ",
+                                                                    "values": [{"userEnteredValue": "Do wysłania"}]}}}}),
         ("Część etatu / zlecenia", {"sortSpecs": [{"dimensionIndex": COL["Match"], "sortOrder": "DESCENDING"}],
                                     "criteria": {str(COL["Wymiar"]): {"condition": {"type": "NOT_BLANK"},
                                                                       "hiddenValues": [FULL_TIME]}}}),
@@ -169,10 +189,6 @@ def ensure_filter_views(sh, offers_ws):
     print("Widoki filtrów w Ofertach:", [v["title"] for v in sheet.get("filterViews", [])])
 
 
-def _col_letter(i: int) -> str:
-    return gspread.utils.rowcol_to_a1(1, i + 1).rstrip("0123456789")
-
-
 def _rule_mentions(rules: list[dict], *needles: str) -> bool:
     return any(json.dumps(n, ensure_ascii=False)[1:-1] in json.dumps(r, ensure_ascii=False) for r in rules for n in needles)
 
@@ -193,7 +209,7 @@ def format_requests(sheet_id: int, existing_rules: list[dict], sep: str = ",") -
 
     width = len(HEADERS)
     if not _rule_mentions(existing_rules, "Odrzucone", "Rezygnacja", "Ghosting"):
-        cond = sep.join(f'$E2="{s}"' for s in CLOSED_STATUSES)
+        cond = sep.join(f'${col_letter(COL["Status"])}2="{s}"' for s in CLOSED_STATUSES)
         add({"ranges": [{"sheetId": sheet_id, "startRowIndex": 1, "startColumnIndex": 0, "endColumnIndex": width}],
              "booleanRule": {"condition": {"type": "CUSTOM_FORMULA", "values": [{"userEnteredValue": f"=OR({cond})"}]},
                              "format": {"backgroundColor": {"red": 0.85, "green": 0.85, "blue": 0.85},
@@ -208,12 +224,29 @@ def format_requests(sheet_id: int, existing_rules: list[dict], sep: str = ",") -
         add({"ranges": [{"sheetId": sheet_id, "startRowIndex": 1, "startColumnIndex": col, "endColumnIndex": col + 1}],
              "booleanRule": {"condition": {"type": "TEXT_EQ", "values": [{"userEnteredValue": level.SENIOR_PLUS}]},
                              "format": {"backgroundColor": {"red": 1.0, "green": 0.76, "blue": 0.4}}}})
-    ai_formula = f'=${_col_letter(COL["AI"])}2<>""'
+    ai_formula = f'=${col_letter(COL["AI"])}2<>""'
     if not _rule_mentions(existing_rules, ai_formula):
         add({"ranges": [{"sheetId": sheet_id, "startRowIndex": 1, "startColumnIndex": 0, "endColumnIndex": width}],
              "booleanRule": {"condition": {"type": "CUSTOM_FORMULA", "values": [{"userEnteredValue": ai_formula}]},
                              "format": {"backgroundColor": {"red": 0.91, "green": 0.87, "blue": 0.98}}}})
+    age = COL["Wiek (dni)"]
+    for ctype, value, color in (("NUMBER_GREATER", 90, {"red": 0.96, "green": 0.62, "blue": 0.6}),         # > 90 dni: czerwony
+                                ("NUMBER_GREATER", 45, {"red": 1.0, "green": 0.76, "blue": 0.4}),         # > 45 dni: pomarańczowy
+                                ("NUMBER_LESS_THAN_EQ", 14, {"red": 0.72, "green": 0.88, "blue": 0.72})):  # <= 14 dni: zielony
+        if not _has_condition(existing_rules, ctype, str(value), age):
+            add({"ranges": [{"sheetId": sheet_id, "startRowIndex": 1, "startColumnIndex": age, "endColumnIndex": age + 1}],
+                 "booleanRule": {"condition": {"type": ctype, "values": [{"userEnteredValue": str(value)}]},
+                                 "format": {"backgroundColor": color}}})
     return reqs
+
+
+def _has_condition(rules: list[dict], ctype: str, value: str, col: int) -> bool:
+    for r in rules:
+        cond = (r.get("booleanRule") or {}).get("condition") or {}
+        if (cond.get("type") == ctype and [v.get("userEnteredValue") for v in cond.get("values", [])] == [value]
+                and any(x.get("startColumnIndex") == col for x in r.get("ranges", []))):
+            return True
+    return False
 
 
 def ensure_formats(sh, offers_ws, sep: str):
@@ -238,7 +271,7 @@ def check_layout(ws):
 
 
 def migration_requests(headers: list[str], sheet_id: int) -> list[dict]:
-    """Kroki zmiany układu: usuń Alert, wstaw puste kolumny "Poziom" zaraz za Match i "AI" zaraz za Poziomem, "Widełki / forma" zaraz za AI,
+    """Kroki zmiany układu: usuń Alert, wstaw puste kolumny "Wiek (dni)" i "Aktywna" zaraz za Link, "Poziom" zaraz za Match i "AI" zaraz za Poziomem, "Widełki / forma" zaraz za AI,
     "Kontakt" zaraz za Widełkami i pustą kolumnę "Wymiar" między nimi. Liczy je z aktualnych nagłówków, więc jest idempotentna i dokańcza układ pośredni.
     Zmienia wyłącznie strukturę kolumn (deleteDimension / insertDimension / moveDimension), więc ręcznie wpisane dane zostają. Niezgodny wynik
     (np. obca kolumna) = ValueError, zanim cokolwiek zostanie zmienione."""
@@ -252,7 +285,8 @@ def migration_requests(headers: list[str], sheet_id: int) -> list[dict]:
         reqs.append({"deleteDimension": {"range": dim(i)}})
         h.pop(i)
 
-    for name, anchor in (("Poziom", "Match"), ("AI", "Poziom")):       # puste kolumny wstawiane w tej kolejności
+    for name, anchor in (("Wiek (dni)", "Link"), ("Aktywna", "Wiek (dni)"),       # puste kolumny wstawiane w tej kolejności
+                         ("Poziom", "Match"), ("AI", "Poziom")):
         if name not in h and anchor in h:
             i = h.index(anchor) + 1
             reqs.append({"insertDimension": {"range": dim(i), "inheritFromBefore": False}})
@@ -299,10 +333,15 @@ def migrate(sh, cfg, today: str | None = None):
         meta = sh.fetch_sheet_metadata(params={"fields": "sheets(properties(sheetId),filterViews(title,filterViewId))"})
         views = next(x for x in meta["sheets"] if x["properties"]["sheetId"] == ws.id).get("filterViews", [])
         stale = [{"deleteFilterView": {"filterId": v["filterViewId"]}} for v in views if v["title"] in FILTER_VIEW_TITLES]
-        sh.batch_update({"requests": stale + reqs})       # widoki mają stare indeksy kolumn: wracają z init()
+        cf = sh.fetch_sheet_metadata(params={"fields": "sheets(properties(sheetId),conditionalFormats)"})
+        rules = next(x for x in cf["sheets"] if x["properties"]["sheetId"] == ws.id).get("conditionalFormats", [])
+        # reguły z formułami odwołują się do liter kolumn, które się przesuwają: kasujemy własne (od końca), init() doda je od nowa
+        ours = [i for i, r in enumerate(rules) if any(k in json.dumps(r, ensure_ascii=False) for k in ('Odrzucone', 'CUSTOM_FORMULA', "Senior+", "NUMBER_"))]
+        drop = [{"deleteConditionalFormatRule": {"sheetId": ws.id, "index": i}} for i in sorted(ours, reverse=True)]
+        sh.batch_update({"requests": stale + drop + reqs})   # widoki mają stare indeksy kolumn: wracają z init()
         row1 = ws.row_values(1)                            # insertDimension wstawia puste kolumny: nagłówki dopisujemy od razu
         for i, name in enumerate(HEADERS):
-            if name in ("Poziom", "AI", "Wymiar") and name not in row1:
+            if name in ("Wiek (dni)", "Aktywna", "Poziom", "AI", "Wymiar") and name not in row1:
                 ws.update_cell(1, i + 1, name)
         print(f"Migracja: {len(reqs)} operacji na kolumnach, usunięto {len(stale)} widoków filtrów.")
     init(sh, cfg)                                       # idempotentne: walidacje, formaty, widoki, lustro (także po przerwanej migracji)
@@ -310,7 +349,8 @@ def migrate(sh, cfg, today: str | None = None):
     headers = ws.row_values(1)
     if headers != HEADERS:
         raise RuntimeError(f"Nagłówki Ofert po migracji: {headers}")
-    backfill_columns(sh, cfg, ws)
+    seed_history(sh, cfg, ws)
+    backfill_columns(sh, cfg, ws, sheet_locale(sh))
     print("Oferty, nagłówki:", headers)
     print("Oferty, 3 pierwsze wiersze:")
     for row in ws.get(f"A2:{gspread.utils.rowcol_to_a1(1, len(HEADERS)).rstrip('0123456789')}4"):
@@ -369,24 +409,49 @@ def workload_backfill(rows: list[list[str]], descriptions: dict[str, str]) -> li
     return out
 
 
-def backfill_columns(sh, cfg, ws):
-    """Uzupełnia puste komórki Poziomu, AI i Wymiaru w istniejących wierszach (osobne zakresy; Notatki tylko dla Poziomu)."""
+def age_backfill(rows: list[list[str]], sep: str) -> list[tuple[int, str, str | None]]:
+    """Dla wierszy Ofert z danymi: (numer wiersza, formuła Wieku albo None, "Tak" albo None) tylko dla pustych komórek."""
+    out = []
+    for n, r in enumerate(rows, start=2):
+        r = r + [""] * len(HEADERS)
+        if not (r[COL["Firma"]].strip() or r[COL["Stanowisko"]].strip()) or not r[COL["Klucz"]].strip():
+            continue                                  # puste i ręcznie dopisane wiersze bez Klucza nie mają historii
+        age = age_formula(n, sep) if not r[COL["Wiek (dni)"]].strip() else None
+        active = "Tak" if not r[COL["Aktywna"]].strip() else None
+        if age or active:
+            out.append((n, age, active))
+    return out
+
+
+def backfill_columns(sh, cfg, ws, locale: str = "en_US"):
+    """Uzupełnia puste komórki Poziomu, AI, Wymiaru, Wieku i Aktywnej w istniejących wierszach (osobne zakresy;
+    Notatki tylko dla Poziomu)."""
     rows = ws.get_all_values()[1:]
     descriptions = read_descriptions(sh, cfg)
     levels = level_backfill(rows, descriptions, cfg["level"])
     ais = ai_backfill(rows, descriptions, cfg["ai"])
     data = []
     for n, lvl, note in levels:
-        data.append({"range": f"{_col_letter(COL['Poziom'])}{n}", "values": [[lvl]]})
+        data.append({"range": f"{col_letter(COL['Poziom'])}{n}", "values": [[lvl]]})
         if note is not None:
-            data.append({"range": f"{_col_letter(COL['Notatki'])}{n}", "values": [[note]]})
+            data.append({"range": f"{col_letter(COL['Notatki'])}{n}", "values": [[note]]})
     for n, value in ais:
-        data.append({"range": f"{_col_letter(COL['AI'])}{n}", "values": [[value]]})
+        data.append({"range": f"{col_letter(COL['AI'])}{n}", "values": [[value]]})
     workloads = workload_backfill(rows, descriptions)
     for n, value in workloads:
-        data.append({"range": f"{_col_letter(COL['Wymiar'])}{n}", "values": [[value]]})
+        data.append({"range": f"{col_letter(COL['Wymiar'])}{n}", "values": [[value]]})
     if data:
         ws.batch_update(data, value_input_option="RAW")
+    ages = age_backfill(rows, arg_separator(locale))
+    formulas = []
+    for n, age, active in ages:
+        if age:
+            formulas.append({"range": f"{col_letter(COL['Wiek (dni)'])}{n}", "values": [[age]]})
+        if active:
+            formulas.append({"range": f"{col_letter(COL['Aktywna'])}{n}", "values": [[active]]})
+    if formulas:
+        ws.batch_update(formulas, value_input_option="USER_ENTERED")
+    print("Wiek / Aktywna: uzupełniono", len(ages), "wierszy.")
     from collections import Counter
     print("Poziom: uzupełniono", len(levels), "wierszy:", dict(Counter(u[1] for u in levels)))
     print("AI: uzupełniono", len(ais), "wierszy:", dict(Counter(v.split(" (")[0] for _, v in ais)))
@@ -406,6 +471,20 @@ def report(sh, cfg):
     for r in [r for r in rows if r[COL["Poziom"]] == level.SENIOR_PLUS][:5]:
         print(f"  {r[COL['Firma']]} – {r[COL['Stanowisko']]} | {r[COL['Notatki']]}")
     ai_rows = sorted((r for r in rows if r[COL["AI"]].strip()), key=lambda r: -float((r[COL["Match"]] or "0").rstrip("%").replace(",", ".") or 0))
+    history = read_seen(sh, cfg)
+    summaries = history.summaries(cfg["ghost"]["no_disappearance"])
+    today = __import__("datetime").date.today()
+    aged = []
+    for r in rows:
+        s = summaries.get(r[COL["Klucz"]])
+        if s and s.earliest and not s.disappeared:
+            aged.append(((today - __import__("datetime").date.fromisoformat(s.earliest)).days, s, r))
+    aged.sort(key=lambda x: -x[0])
+    print("Wiek: najstarsze aktywne oferty (wiek dni | odświeżenia | portale | oferta):")
+    for days, s, r in aged[:10]:
+        print(f"  {days:>4} | {s.refreshes}× | {s.portals} | {r[COL['Firma']]} – {r[COL['Stanowisko']]}")
+    print(f"Aktywnych ofert z wiekiem: {len(aged)}; starszych niż 45 dni: {sum(1 for d, _, _ in aged if d > 45)}; "
+          f"starszych niż 90 dni: {sum(1 for d, _, _ in aged if d > 90)}; zniknęło: {sum(1 for s in summaries.values() if s.disappeared)}")
     print(f"Oferty z AI: {len(ai_rows)}")
     for r in ai_rows:
         print(f"  {r[COL['Firma']]} – {r[COL['Stanowisko']]} – {r[COL['Match']] or '–'} – {r[COL['AI']]}")
@@ -458,6 +537,8 @@ def init(sh, cfg, skills_csv="skills.csv"):
         {"setDataValidation": {"range": {"sheetId": sid, "startRowIndex": 1, "startColumnIndex": COL["Poziom"], "endColumnIndex": COL["Poziom"] + 1},
                                "rule": {"condition": {"type": "ONE_OF_LIST", "values": [{"userEnteredValue": v} for v in level.LEVELS]},
                                         "showCustomUi": True, "strict": True}}},
+        {"repeatCell": {"range": {"sheetId": sid, "startRowIndex": 1, "startColumnIndex": COL["Wiek (dni)"], "endColumnIndex": COL["Wiek (dni)"] + 1},
+                        "cell": {"userEnteredFormat": {"numberFormat": {"type": "NUMBER", "pattern": "0"}}}, "fields": "userEnteredFormat.numberFormat"}},
         {"updateDimensionProperties": {"range": {"sheetId": sid, "dimension": "COLUMNS", "startIndex": COL["Klucz"], "endIndex": COL["Klucz"] + 1},
                                        "properties": {"hiddenByUser": True}, "fields": "hiddenByUser"}},
     ]})
@@ -465,6 +546,7 @@ def init(sh, cfg, skills_csv="skills.csv"):
     ensure_formats(sh, ws, arg_separator(locale))
     ensure_descriptions_tab(sh, cfg)
     ensure_sources_tab(sh, cfg)
+    ensure_seen_tab(sh, cfg)
     ensure_filter_views(sh, ws)
     ensure_mirror_tab(sh, ws, locale)
 
@@ -547,6 +629,87 @@ def tail_source_runs(sh, cfg, n: int) -> list[list[str]]:
     return sh.worksheet(cfg["sheet"]["tab_sources"]).get_all_values()[-n:] if n else []
 
 
+def ensure_seen_tab(sh, cfg):
+    """Ukryta zakładka "_widziane" (historia widzianych ofert, seen.py). Idempotentna, nie rusza istniejących danych."""
+    name = cfg["sheet"].get("tab_seen", SEEN_TAB)
+    try:
+        return sh.worksheet(name)
+    except gspread.WorksheetNotFound:
+        ws = sh.add_worksheet(name, 1000, len(seen.HEADERS))
+        ws.update(range_name="A1", values=[seen.HEADERS])
+        sh.batch_update({"requests": [
+            {"updateSheetProperties": {"properties": {"sheetId": ws.id, "hidden": True, "gridProperties": {"frozenRowCount": 1}},
+                                       "fields": "hidden,gridProperties.frozenRowCount"}},
+            {"repeatCell": {"range": {"sheetId": ws.id, "startRowIndex": 1, "startColumnIndex": len(seen.HEADERS) - 1,
+                                      "endColumnIndex": len(seen.HEADERS)},
+                            "cell": {"userEnteredFormat": {"numberFormat": {"type": "DATE", "pattern": "yyyy-mm-dd"}}},
+                            "fields": "userEnteredFormat.numberFormat"}}]})
+        return ws
+
+
+def read_seen(sh, cfg) -> "seen.History":
+    try:
+        rows = sh.worksheet(cfg["sheet"].get("tab_seen", SEEN_TAB)).get_all_values()[1:]
+    except gspread.WorksheetNotFound:
+        return seen.History()
+    return seen.History(r for r in map(seen.Seen.from_row, rows) if r)
+
+
+def write_seen(sh, cfg, history: "seen.History"):
+    """Przepisuje całą historię (workflowy chmurowy i lokalny mają wspólną kolejkę, więc nie ma wyścigów)."""
+    ws = ensure_seen_tab(sh, cfg)
+    rows = history.rows()
+    if ws.row_count < len(rows) + 2:
+        ws.resize(rows=len(rows) + 500)
+    ws.batch_clear([f"A2:{col_letter(len(seen.HEADERS) - 1)}{max(ws.row_count, 2)}"])
+    if rows:
+        ws.update(range_name="A2", values=rows, value_input_option="RAW")
+
+
+def seed_history(sh, cfg, ws):
+    """Migracja: dla wierszy Ofert bez historii zakłada wpis (pierwszy_raz = Dodano); daty z portali dojdą w kolejnym runie."""
+    history = read_seen(sh, cfg)
+    added = 0
+    for r in ws.get_all_values()[1:]:
+        r = r + [""] * len(HEADERS)
+        key = r[COL["Klucz"]].strip()
+        if key and key not in history.by_key:
+            day = seen.iso_date(r[COL["Dodano"]])
+            history.by_key[key] = seen.Seen(key, r[COL["Źródło"]].strip() or key.split(":", 1)[0], key,
+                                            first_seen=day, last_seen=day)
+            added += 1
+    if added or not history.by_key:
+        write_seen(sh, cfg, history)
+    print(f"Historia (_widziane): dopisano {added} wpisów, razem {len(history.by_key)}.")
+
+
+def age_formula(row: int, sep: str, seen_tab: str = SEEN_TAB) -> str:
+    """Wiek (dni) = dziś minus najwcześniejsza data z grupy (wszystkie wpisy historii o tym kluczu kanonicznym).
+    Formuła w wierszu, więc odporna na sortowanie; wiersz bez historii (np. dopisany ręcznie) zostaje pusty."""
+    key = f"${col_letter(COL['Klucz'])}{row}"
+    keys = f"{seen_tab}!$A:$A"
+    earliest = f"{seen_tab}!${col_letter(len(seen.HEADERS) - 1)}:${col_letter(len(seen.HEADERS) - 1)}"
+    return (f'=IF(COUNTIF({keys}{sep}{key})=0{sep}""{sep}TODAY()-MINIFS({earliest}{sep}{keys}{sep}{key}))')
+
+
+def activity_updates(rows: list[list[str]], summaries: dict, today: str) -> list[dict]:
+    """Aktualizacje istniejących wierszy po runie: Aktywna ("Tak" / "Zniknęła RRRR-MM-DD") i tokeny w Notatkach
+    ("Odświeżana N×", "Wisi na K portalach"). Dotyka tylko komórek, które się zmieniają."""
+    data = []
+    for n, r in enumerate(rows, start=2):
+        r = r + [""] * len(HEADERS)
+        s = summaries.get(r[COL["Klucz"]].strip())
+        if not s:
+            continue
+        active = seen.active_value(s, r[COL["Aktywna"]], today)
+        if active != r[COL["Aktywna"]]:
+            data.append({"range": f"{col_letter(COL['Aktywna'])}{n}", "values": [[active]]})
+        note = seen.merge_note(r[COL["Notatki"]], seen.tokens(s))
+        if note != r[COL["Notatki"]].strip() and (note or r[COL["Notatki"]].strip()):
+            data.append({"range": f"{col_letter(COL['Notatki'])}{n}", "values": [[note]]})
+    return data
+
+
 def read_descriptions(sh, cfg) -> dict[str, str]:
     try:
         rows = sh.worksheet(cfg["sheet"]["tab_descriptions"]).get_all_values()[1:]
@@ -565,7 +728,10 @@ def read_skills(sh, cfg):
 
 
 def read_existing(ws):
-    rows = ws.get_all_values()[1:]
+    return existing_from_rows(ws.get_all_values()[1:])
+
+
+def existing_from_rows(rows):
     out = []
     for r in rows:
         r = r + [""] * len(HEADERS)
@@ -578,12 +744,14 @@ def sort_by_match(offers):
     return sorted(offers, key=lambda o: (o.match is None, -(o.match or 0)))
 
 
-def offer_row(o, today: str) -> list:
+def offer_row(o, today: str, row_number: int | None = None, sep: str = ",") -> list:
     row = [""] * len(HEADERS)
     row[COL["Dodano"]] = today
     row[COL["Firma"]] = o.company
     row[COL["Stanowisko"]] = o.title
     row[COL["Link"]] = o.url
+    row[COL["Wiek (dni)"]] = age_formula(row_number, sep) if row_number else ""
+    row[COL["Aktywna"]] = "Tak" if row_number else ""
     row[COL["Status"]] = "Do wysłania"
     row[COL["Match"]] = round(o.match, 2) if o.match is not None else ""
     row[COL["Poziom"]] = getattr(o, "level", "")
@@ -598,7 +766,7 @@ def offer_row(o, today: str) -> list:
     return row
 
 
-def append_offers(ws, offers, today: str, last_row: int):
+def append_offers(ws, offers, today: str, last_row: int, sep: str = ","):
     """Dopisuje nowe oferty (od najwyższego matchu) i zwraca je w kolejności zapisu."""
     if not offers:
         return []
@@ -607,6 +775,6 @@ def append_offers(ws, offers, today: str, last_row: int):
     start = last_row + 1
     end = start + len(offers) - 1
     last_col = gspread.utils.rowcol_to_a1(1, len(HEADERS)).rstrip("0123456789")
-    ws.update(range_name=f"A{start}:{last_col}{end}", values=[offer_row(o, today) for o in offers],
+    ws.update(range_name=f"A{start}:{last_col}{end}", values=[offer_row(o, today, start + i, sep) for i, o in enumerate(offers)],
               value_input_option="USER_ENTERED")
     return offers

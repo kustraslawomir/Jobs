@@ -13,6 +13,7 @@ Postów (wyszukiwanie treści) nie da się czytać bez logowania, więc ich tu n
 import re
 import time
 from models import Offer
+from seen import iso_date
 from .htmlutil import clean_text
 
 SEARCH_URL = "https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search"
@@ -27,6 +28,7 @@ _CARD = re.compile(r"<li>(.*?)</li>", re.S)
 _ID = re.compile(r"jobPosting:(\d+)")
 _TITLE = re.compile(r'base-search-card__title">\s*(.*?)\s*</h3>', re.S)
 _COMPANY = re.compile(r'base-search-card__subtitle">(.*?)</h4>', re.S)
+_DATE = re.compile(r'<time[^>]*datetime="([^"]+)"')
 _PLACE = re.compile(r'job-search-card__location">\s*(.*?)\s*</span>', re.S)
 _CRITERIA = re.compile(r'description__job-criteria-subheader">\s*(.*?)\s*</h3>\s*<span[^>]*>\s*(.*?)\s*</span>', re.S)
 _DESC = re.compile(r'show-more-less-html__markup[^>]*>(.*?)</div>', re.S)
@@ -39,12 +41,12 @@ def parse_cards(page: str) -> list[Offer]:
         title, company = _TITLE.search(card), _COMPANY.search(card)
         if not (m and title and company):
             continue
-        place = _PLACE.search(card)
+        place, posted = _PLACE.search(card), _DATE.search(card)
         out.append(Offer(
             source="linkedin", source_id=m.group(1), url=OFFER_URL.format(id=m.group(1)),
             company=clean_text(company.group(1)) or "?", title=clean_text(title.group(1)) or "?",
             remote=True, location=clean_text(place.group(1)) if place else "",
-            description=clean_text(title.group(1)),
+            description=clean_text(title.group(1)), published=iso_date(posted.group(1)) if posted else "",
         ))
     return out
 

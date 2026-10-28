@@ -14,7 +14,7 @@ on:
         default: run
 
 concurrency:
-  group: scrape-local
+  group: scrape      # ta sama kolejka co scrape.yml: oba workflowy przepisują historię (_widziane)
   cancel-in-progress: false
 
 jobs:

@@ -162,6 +162,7 @@ class Match:
     source: str
     content: float | None
     title_score: int
+    key: str = ""              # klucz kanoniczny oferty, z którą się zmatchowało (Klucz z Ofert)
 
     @property
     def note(self) -> str:
@@ -257,7 +258,7 @@ class Deduper:
             content = self._content(cand_sh, e, same_co)
 
             def m(kind, reason=""):
-                return Match(kind, reason, e.company, e.title, e.source, content, t)
+                return Match(kind, reason, e.company, e.title, e.source, content, t, e.key)
 
             if not same_co and cand_agency and content is not None and content >= c["content_possible"]:
                 agency.append(m("agency"))

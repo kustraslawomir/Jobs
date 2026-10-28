@@ -10,6 +10,7 @@ import re
 import time
 from models import Offer, Pay
 from contracts import normalize
+from seen import iso_date
 from .htmlutil import clean_text, job_posting_description as _job_posting_description, page_text
 
 LIST_URL = "https://justjoin.it/api/candidate-api/offers"
@@ -74,6 +75,7 @@ def fetch(session) -> list[Offer]:
             wt = str(pick(it, "workplaceType", default="")).lower()
             cities = [l.get("city", "") for l in (pick(it, "locations", default=[]) or []) if isinstance(l, dict)]
             skills = _skills(it, "requiredSkills") + _skills(it, "niceToHaveSkills")
+            dates = sorted(d for d in (iso_date(pick(it, "publishedAt")), iso_date(pick(it, "lastPublishedAt"))) if d)
             out.append(Offer(
                 source="justjoinit", source_id=str(oid), url=OFFER_URL.format(slug=slug),
                 company=pick(it, "companyName", default="?"), title=pick(it, "title", default="?"),
@@ -81,6 +83,8 @@ def fetch(session) -> list[Offer]:
                 location=", ".join(dict.fromkeys(c for c in cities if c)) or pick(it, "city", default=""),
                 contract=contracts, pay=pays, seniority=pick(it, "experienceLevel", default=""),
                 employment=pick(it, "workingTime", default=""),
+                # publishedAt to data ostatniego odświeżenia (po niej sortuje portal), lastPublishedAt bywa starsza
+                published=dates[0] if dates else "", renewed=dates[-1] if dates else "",
                 description=" ".join([pick(it, "title", default="")] + skills),
             ))
         nxt = pick(data, "meta.next.cursor")
