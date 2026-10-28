@@ -49,6 +49,7 @@ def to_offer(item: dict) -> Offer | None:
         company=item.get("company") or "?", title=item.get("title") or "?",
         remote=bool(item.get("isRemote")), location=", ".join(item.get("locations") or []),
         pay=pays, seniority=item.get("experienceLevel") or "",
+        employment=item.get("contractTime") or "",
         description=" ".join([item.get("title") or ""] + skills + [clean_text(item.get("description") or "")]),
     )
 

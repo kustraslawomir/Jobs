@@ -26,5 +26,5 @@ def test_real_config_assigns_czyjesteldorado_to_local():
     import yaml
     cfg = yaml.safe_load(open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "config.yaml"),
                               encoding="utf-8"))
-    assert main.active_sources(cfg, "local") == ["czyjesteldorado"]
-    assert "czyjesteldorado" not in main.active_sources(cfg, "cloud")
+    assert main.active_sources(cfg, "local") == ["czyjesteldorado", "linkedin"]
+    assert not {"czyjesteldorado", "linkedin"} & set(main.active_sources(cfg, "cloud"))

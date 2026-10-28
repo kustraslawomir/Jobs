@@ -32,6 +32,7 @@ sources:
   czyjesteldorado: {enabled: true, runner: local}
   bulldogjob: true
   solidjobs: true
+  linkedin: {enabled: true, runner: local}      # publiczny endpoint guest, ostatnie 30 dni; bywa blokowany z serwerowni
 
 dedup:
   # tytuły (0-100): pewny duplikat przy tej samej firmie / możliwy duplikat przy tej samej firmie / minimum dla porównania treści

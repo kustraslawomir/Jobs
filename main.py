@@ -15,6 +15,7 @@ import yaml
 
 import ai_flag
 import ats
+import employment
 import level
 from dedup import Deduper, SURE_BY_CONTENT, looks_like_agency, norm_description
 from sources import DETAILS, REGISTRY
@@ -47,7 +48,8 @@ def passes_filters(o, f, fx) -> str | None:
     if allow and o.contract and not allow & {c.upper() for c in o.contract}:
         return "forma współpracy"
     top = o.salary_to_pln_month(fx)
-    if f.get("min_salary_to_pln") and top is not None and top < f["min_salary_to_pln"]:
+    reduced = employment.labels(o.employment, o.title, o.description)       # część etatu / zlecenie: stawka z natury niższa
+    if f.get("min_salary_to_pln") and top is not None and top < f["min_salary_to_pln"] and not reduced:
         return "za niskie widełki"
     return None
 
@@ -186,6 +188,8 @@ def main():
             if looks_like_agency(o.company) and not any(m.kind == "agency" for m in verdict.matches):
                 notes.append("Agencja? Ustal klienta końcowego, zanim wyślesz CV.")
             o.ai = ai_flag.detect(o.title, o.description, cfg["ai"])
+            if employment_note := employment.note(o.employment, o.title, o.description):
+                notes.append(employment_note)
             assessment = level.assess(o.title, o.description, o.seniority, cfg["level"])
             o.level = assessment.level
             if assessment.note:

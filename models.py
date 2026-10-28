@@ -42,6 +42,7 @@ class Offer:
     pay: list[Pay] = field(default_factory=list)         # widełki per forma (tylko te z kwotami)
     description: str = ""          # pełny opis albo lista skilli, z tego liczy się ATS
     seniority: list[str] = field(default_factory=list)   # surowe pole poziomu z API portalu ("senior", "Mid"...)
+    employment: list[str] = field(default_factory=list)  # surowe pola wymiaru / typu pracy z portalu ("part_time", "freelance"...)
     # wypełniane później
     match: float | None = None
     gaps: list[str] = field(default_factory=list)
@@ -59,6 +60,9 @@ class Offer:
         if isinstance(self.seniority, str):
             self.seniority = [self.seniority]
         self.seniority = [s for s in self.seniority if s]
+        if isinstance(self.employment, str):
+            self.employment = [self.employment]
+        self.employment = [s for s in self.employment if s]
         if isinstance(self.contract, str):
             self.contract = [self.contract] if self.contract else []
         self.contract = list(dict.fromkeys(c for c in map(normalize_contract, self.contract) if c))

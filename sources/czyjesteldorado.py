@@ -57,6 +57,7 @@ def to_offer(item: dict) -> Offer | None:
         company=pick(item, "company.name", default="?"), title=pick(item, "title", default="?"),
         remote=remote, location=", ".join(item.get("cities") or []),
         contract=contracts, pay=pays, seniority=item.get("seniority") or "",
+        employment=item.get("workloadTypes") or [],
         description=" ".join([pick(item, "title", default="")] + list(item.get("keywords") or []) + texts),
     )
 
