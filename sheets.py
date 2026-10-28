@@ -6,10 +6,11 @@ import os
 import gspread
 
 import ai_flag
+import employment
 import level
 
 HEADERS = ["Dodano", "Firma", "Stanowisko", "Link", "Status", "Wysłano CV", "Rozmowa",
-           "Następny krok", "Termin", "Match", "Poziom", "AI", "Widełki / forma", "Kontakt", "Luki", "Dopisz do CV",
+           "Następny krok", "Termin", "Match", "Poziom", "AI", "Widełki / forma", "Wymiar", "Kontakt", "Luki", "Dopisz do CV",
            "Notatki", "Źródło", "Klucz"]
 COL = {h: i for i, h in enumerate(HEADERS)}           # 0-based
 STATUSES = ["Do wysłania", "Wysłane", "Odpowiedź", "Rozmowa", "Zadanie domowe", "Oferta",
@@ -67,7 +68,8 @@ def header_request(sheet_id: int) -> dict:
 
 
 CLOSED_STATUSES = ["Przyjęta", "Odrzucone", "Rezygnacja", "Ghosting"]      # proces zakończony
-FILTER_VIEW_TITLES = ("Do przejrzenia", "Najnowsze", "AI")
+FULL_TIME = employment.FULL
+FILTER_VIEW_TITLES = ("Do przejrzenia", "Najnowsze", "AI", "Część etatu / zlecenia")
 
 
 def filter_view_requests(sheet_id: int, existing_titles) -> list[dict]:
@@ -83,6 +85,9 @@ def filter_view_requests(sheet_id: int, existing_titles) -> list[dict]:
         ("AI", {"sortSpecs": [{"dimensionIndex": COL["Match"], "sortOrder": "DESCENDING"}],
                 "criteria": {str(COL["AI"]): {"condition": {"type": "NOT_BLANK"}},
                              str(COL["Status"]): {"hiddenValues": CLOSED_STATUSES}}}),
+        ("Część etatu / zlecenia", {"sortSpecs": [{"dimensionIndex": COL["Match"], "sortOrder": "DESCENDING"}],
+                                    "criteria": {str(COL["Wymiar"]): {"condition": {"type": "NOT_BLANK"},
+                                                                      "hiddenValues": [FULL_TIME]}}}),
     ]
     return [{"addFilterView": {"filter": {"title": title, "range": rng, **spec}}}
             for title, spec in views if title not in set(existing_titles)]
@@ -234,7 +239,7 @@ def check_layout(ws):
 
 def migration_requests(headers: list[str], sheet_id: int) -> list[dict]:
     """Kroki zmiany układu: usuń Alert, wstaw puste kolumny "Poziom" zaraz za Match i "AI" zaraz za Poziomem, "Widełki / forma" zaraz za AI,
-    "Kontakt" zaraz za Widełkami. Liczy je z aktualnych nagłówków, więc jest idempotentna i dokańcza układ pośredni.
+    "Kontakt" zaraz za Widełkami i pustą kolumnę "Wymiar" między nimi. Liczy je z aktualnych nagłówków, więc jest idempotentna i dokańcza układ pośredni.
     Zmienia wyłącznie strukturę kolumn (deleteDimension / insertDimension / moveDimension), więc ręcznie wpisane dane zostają. Niezgodny wynik
     (np. obca kolumna) = ValueError, zanim cokolwiek zostanie zmienione."""
     h, reqs = list(headers), []
@@ -264,7 +269,11 @@ def migration_requests(headers: list[str], sheet_id: int) -> list[dict]:
             reqs.append({"moveDimension": {"source": dim(i), "destinationIndex": p if i > p else p + 1}})
 
     place_after("Widełki / forma", "AI")
-    place_after("Kontakt", "Widełki / forma")
+    place_after("Kontakt", "Wymiar" if "Wymiar" in h else "Widełki / forma")
+    if "Wymiar" not in h and "Widełki / forma" in h:                   # pusta kolumna zaraz za Widełkami, przed Kontaktem
+        i = h.index("Widełki / forma") + 1
+        reqs.append({"insertDimension": {"range": dim(i), "inheritFromBefore": False}})
+        h.insert(i, "Wymiar")
     if h != HEADERS:
         raise ValueError(f"Po migracji nagłówki nie pasują do nowego układu. Są: {headers} -> {h}")
     return reqs
@@ -293,7 +302,7 @@ def migrate(sh, cfg, today: str | None = None):
         sh.batch_update({"requests": stale + reqs})       # widoki mają stare indeksy kolumn: wracają z init()
         row1 = ws.row_values(1)                            # insertDimension wstawia puste kolumny: nagłówki dopisujemy od razu
         for i, name in enumerate(HEADERS):
-            if name in ("Poziom", "AI") and name not in row1:
+            if name in ("Poziom", "AI", "Wymiar") and name not in row1:
                 ws.update_cell(1, i + 1, name)
         print(f"Migracja: {len(reqs)} operacji na kolumnach, usunięto {len(stale)} widoków filtrów.")
     init(sh, cfg)                                       # idempotentne: walidacje, formaty, widoki, lustro (także po przerwanej migracji)
@@ -345,8 +354,23 @@ def ai_backfill(rows: list[list[str]], descriptions: dict[str, str], cfg_ai: dic
     return out
 
 
+def workload_backfill(rows: list[list[str]], descriptions: dict[str, str]) -> list[tuple[int, str]]:
+    """Dla wierszy z pustym Wymiarem i opisem w _opisy: (numer wiersza, wartość) tylko tam, gdzie detektor coś znalazł.
+    Informacji o wymiarze nie dopisujemy do Notatek."""
+    out = []
+    for n, r in enumerate(rows, start=2):
+        r = r + [""] * len(HEADERS)
+        desc = descriptions.get(r[COL["Klucz"]], "")
+        if r[COL["Wymiar"]].strip() or not desc.strip():
+            continue
+        value = employment.value([], r[COL["Stanowisko"]], desc)
+        if value:
+            out.append((n, value))
+    return out
+
+
 def backfill_columns(sh, cfg, ws):
-    """Uzupełnia puste komórki Poziomu i AI w istniejących wierszach (osobne zakresy, tylko kolumny Poziom, AI i Notatki)."""
+    """Uzupełnia puste komórki Poziomu, AI i Wymiaru w istniejących wierszach (osobne zakresy; Notatki tylko dla Poziomu)."""
     rows = ws.get_all_values()[1:]
     descriptions = read_descriptions(sh, cfg)
     levels = level_backfill(rows, descriptions, cfg["level"])
@@ -358,11 +382,15 @@ def backfill_columns(sh, cfg, ws):
             data.append({"range": f"{_col_letter(COL['Notatki'])}{n}", "values": [[note]]})
     for n, value in ais:
         data.append({"range": f"{_col_letter(COL['AI'])}{n}", "values": [[value]]})
+    workloads = workload_backfill(rows, descriptions)
+    for n, value in workloads:
+        data.append({"range": f"{_col_letter(COL['Wymiar'])}{n}", "values": [[value]]})
     if data:
         ws.batch_update(data, value_input_option="RAW")
     from collections import Counter
     print("Poziom: uzupełniono", len(levels), "wierszy:", dict(Counter(u[1] for u in levels)))
     print("AI: uzupełniono", len(ais), "wierszy:", dict(Counter(v.split(" (")[0] for _, v in ais)))
+    print("Wymiar: uzupełniono", len(workloads), "wierszy:", dict(Counter(v.split(" (")[0] for _, v in workloads)))
 
 
 def report(sh, cfg):
@@ -560,6 +588,7 @@ def offer_row(o, today: str) -> list:
     row[COL["Match"]] = round(o.match, 2) if o.match is not None else ""
     row[COL["Poziom"]] = getattr(o, "level", "")
     row[COL["AI"]] = getattr(o, "ai", "")
+    row[COL["Wymiar"]] = getattr(o, "workload", "")
     row[COL["Widełki / forma"]] = o.salary_text()
     row[COL["Luki"]] = ", ".join(o.gaps)
     row[COL["Dopisz do CV"]] = ", ".join(o.add_to_cv)

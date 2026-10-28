@@ -8,10 +8,18 @@ on:
       mode:
         description: "Tryb"
         type: choice
-        options: [run, init, dry-run, migrate, report, delete-backup]
+        options: [run, init, dry-run, migrate, report, add, delete-backup]
         default: run
       backup:
         description: "Nazwa kopii zapasowej do usunięcia (tryb delete-backup)"
+        type: string
+        default: ""
+      url:
+        description: "Link do oferty (tryb add)"
+        type: string
+        default: ""
+      text:
+        description: "Wklejony opis oferty (tryb add, opcjonalnie)"
         type: string
         default: ""
 
@@ -37,11 +45,14 @@ jobs:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           BACKUP_NAME: ${{ inputs.backup }}
+          ADD_URL: ${{ inputs.url }}
+          ADD_TEXT: ${{ inputs.text }}
         run: |
           case "${{ inputs.mode || 'run' }}" in
             init)    python main.py --init ;;
             migrate) python main.py --migrate ;;
             report)  python main.py --report ;;
+            add)     python main.py --add --url "$ADD_URL" --text "$ADD_TEXT" ;;
             delete-backup) python main.py --delete-backup "$BACKUP_NAME" ;;
             dry-run) python main.py --dry-run --runner cloud ;;
             *)       python main.py --runner cloud ;;

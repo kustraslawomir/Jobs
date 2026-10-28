@@ -82,6 +82,52 @@ def notify(cfg, offers):
     telegram(cfg, "\n".join(lines))
 
 
+def finish(o, verdict, cfg, extra_notes=()):
+    """Pola liczone po ATS: AI, wymiar, poziom i notatki (dopisywane, nic nie nadpisuje)."""
+    notes = list(verdict.notes) + list(extra_notes)
+    if o.n_req < ats.MIN_REQUIREMENTS:
+        notes.append("Mało danych do ATS – sprawdź opis ręcznie")
+    if looks_like_agency(o.company) and not any(m.kind == "agency" for m in verdict.matches):
+        notes.append("Agencja? Ustal klienta końcowego, zanim wyślesz CV.")
+    o.ai = ai_flag.detect(o.title, o.description, cfg["ai"])
+    o.workload = employment.value(o.employment, o.title, o.description)
+    assessment = level.assess(o.title, o.description, o.seniority, cfg["level"])
+    o.level = assessment.level
+    if assessment.note:
+        notes.append(assessment.note)
+    o.note = ". ".join(notes)
+
+
+def add_manual(cfg, cv_text: str, url: str | None, text: str | None):
+    """Ręczne dodanie jednej oferty: bez filtrów, ale z dedupem po ID i treści oraz z ATS."""
+    import manual
+    import sheets
+    if not (url or "").strip() and not (text or "").strip():
+        sys.exit("--add wymaga --url i/lub --text")
+    sh = sheets.connect()
+    ws = sh.worksheet(cfg["sheet"]["tab_offers"])
+    sheets.check_layout(ws)
+    skills = ats.load_skills(sheets.read_skills(sh, cfg))
+    existing, last_row = sheets.read_existing(ws)
+    dd = Deduper(existing, sheets.read_descriptions(sh, cfg), cfg["dedup"], cfg["fx_to_pln"])
+    session = requests.Session()
+    o, extra = manual.build_offer(session, url, text)
+    if dd.has_key(o):
+        print(f"Pominięto: ta oferta jest już w arkuszu ({o.key}).")
+        return
+    verdict = dd.check(o)
+    if verdict.rejected:
+        print(f"Pominięto jako duplikat: [{verdict.rejected.reason}] {verdict.rejected.describe(o)}")
+        return
+    o.match, o.gaps, o.add_to_cv, o.n_req = ats.evaluate(o.description, skills, cv_text)
+    finish(o, verdict, cfg, extra)
+    written = sheets.append_offers(ws, [o], dt.date.today().isoformat(), last_row)
+    sheets.append_descriptions(sh, cfg, [(o.key, norm_description(o.description))])
+    print(f"Dodano ręcznie: {o.company} – {o.title} | match {'–' if o.match is None else f'{o.match:.0%}'} | "
+          f"poziom {o.level} | AI {o.ai or '-'} | wymiar {o.workload or '-'} | notatki: {o.note or '-'}")
+    print(f"Wiersz {last_row + 1}, link: {o.url or '(brak)'}; zapisano: {len(written)}")
+
+
 def is_failed(fetched: int, error: str) -> bool:
     return bool(error) or fetched == 0
 
@@ -102,6 +148,9 @@ def main():
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--delete-backup", metavar="NAZWA", help="usuń kopię zapasową Oferty_backup_* po migracji")
     ap.add_argument("--report", action="store_true", help="tylko odczyt: poziomy, oferty z AI, trafienia samym \"ai\"")
+    ap.add_argument("--add", action="store_true", help="dodaj ofertę ręcznie (--url i/lub --text), bez filtrów, z dedupem i ATS")
+    ap.add_argument("--url", help="link do oferty (z --add)")
+    ap.add_argument("--text", help="wklejony opis oferty (z --add)")
     ap.add_argument("--migrate", action="store_true", help="przestaw kolumny zakładki Oferty do nowego układu")
     ap.add_argument("--runner", choices=["cloud", "local"],
                     help="zbieraj tylko źródła przypisane do tego runnera (bez flagi: wszystkie)")
@@ -109,6 +158,10 @@ def main():
 
     cfg = yaml.safe_load(open("config.yaml", encoding="utf-8"))
     cv_text = open("cv.txt", encoding="utf-8").read()
+
+    if args.add:
+        add_manual(cfg, cv_text, args.url, args.text)
+        return
 
     if args.dry_run:
         with open("skills.csv", encoding="utf-8") as fh:
@@ -182,19 +235,7 @@ def main():
             if cfg["filters"].get("min_match") and o.match is not None and o.match < cfg["filters"]["min_match"]:
                 st["za niski match"] = st.get("za niski match", 0) + 1
                 continue
-            notes = list(verdict.notes)
-            if o.n_req < ats.MIN_REQUIREMENTS:
-                notes.append("Mało danych do ATS – sprawdź opis ręcznie")
-            if looks_like_agency(o.company) and not any(m.kind == "agency" for m in verdict.matches):
-                notes.append("Agencja? Ustal klienta końcowego, zanim wyślesz CV.")
-            o.ai = ai_flag.detect(o.title, o.description, cfg["ai"])
-            if employment_note := employment.note(o.employment, o.title, o.description):
-                notes.append(employment_note)
-            assessment = level.assess(o.title, o.description, o.seniority, cfg["level"])
-            o.level = assessment.level
-            if assessment.note:
-                notes.append(assessment.note)                # dopisujemy do notatek, niczego nie nadpisując
-            o.note = ". ".join(notes)
+            finish(o, verdict, cfg)
             dd.add(o)
             new.append(o)
             st["nowe"] += 1

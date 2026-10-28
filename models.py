@@ -51,6 +51,7 @@ class Offer:
     note: str = ""
     level: str = ""                # "Mid" | "Senior" | "Senior+" | "?" (level.py)
     ai: str = ""                   # "produkt (llm)" / "workflow (...)" / "" (ai_flag.py)
+    workload: str = ""             # "Pełny etat" | "Część etatu (1/2)" | "Zlecenie / kontrakt" | "" (employment.py)
 
     @property
     def key(self) -> str:
