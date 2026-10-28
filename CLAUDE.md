@@ -9,6 +9,8 @@ Użytkownik pisze krótko. Tłumacz jego komendy tak:
 - "co jest w arkuszu" → przeczytaj Oferty przez gspread i pokaż top 10 ze statusem "Do wysłania" po matchu.
 - "napraw <źródło>" → uruchom dry-run, znajdź błąd źródła w logu, popraw parser, pytest, commit, push, dry-run.
 
+Runner lokalny: nazywa się `jobs-mac`, leży w `~/actions-runner` na Macu użytkownika (usługa LaunchAgent, `./svc.sh status|stop|start`), etykiety `self-hosted, macOS, ARM64`. Źródła z `runner: local` (czyjesteldorado, linkedin) zbiera tylko on; gdy Mac jest wyłączony, runner jest offline.
+
 Zasady:
 - Arkusz edytujemy tylko przez kod/workflow, nigdy ręcznie przepisując dane.
 - Nie usuwaj wierszy z Ofert (dedup na nich stoi).
