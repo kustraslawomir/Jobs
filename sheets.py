@@ -40,13 +40,17 @@ def connect():
 
 
 def mirror_formulas(sep: str) -> tuple[str, str]:
-    """Formuły lustra Ofert: bez wierszy "Do wysłania", "Rezygnacja" i pustych, najpierw ostatnio wysłane (kolumna "Wysłano CV").
+    """Formuły lustra Ofert: bez wierszy "Do wysłania", "Rezygnacja" i pustych, najpierw aktywne, potem ostatnio wysłane (kolumna "Wysłano CV"); nieaktywne ("Zniknęła") zawsze na dole, nawet po wysłaniu CV.
     `sep` to separator argumentów: ";" dla arkuszy z polskim (i innym europejskim) locale, "," dla en_US."""
     a1 = f"={{Oferty!A1:{MIRROR_LAST}1}}"          # goła referencja pokazałaby tylko A1; literał tablicowy rozlewa się na MIRROR_COLS kolumn
     st = col_letter(COL["Status"])
-    a2 = ('=IFERROR(SORT(FILTER(Oferty!A2:{c}{s}Oferty!{st}2:{st}<>""{s}Oferty!{st}2:{st}<>"Do wysłania"{s}'
-          'Oferty!{st}2:{st}<>"Rezygnacja"){s}{sort}{s}FALSE){s}"Jeszcze nic nie wysłane")').format(
-        s=sep, c=MIRROR_LAST, st=st, sort=COL["Wysłano CV"] + 1)
+    act = col_letter(COL["Aktywna"])
+    cv = col_letter(COL["Wysłano CV"])
+    conds = '{s}Oferty!{st}2:{st}<>""{s}Oferty!{st}2:{st}<>"Do wysłania"{s}Oferty!{st}2:{st}<>"Rezygnacja"'.format(s=sep, st=st)
+    # klucze sortowania: najpierw nieaktywne na dół ("Zniknęła ..." w kolumnie Aktywna), potem ostatnio wysłane
+    a2 = ('=IFERROR(SORT(FILTER(Oferty!A2:{c}{conds}){s}FILTER(LEFT(Oferty!{act}2:{act}{s}7)="Zniknęła"{conds}){s}TRUE{s}'
+          'FILTER(Oferty!{cv}2:{cv}{conds}){s}FALSE){s}"Jeszcze nic nie wysłane")').format(
+        s=sep, c=MIRROR_LAST, act=act, cv=cv, conds=conds)
     return a1, a2
 
 

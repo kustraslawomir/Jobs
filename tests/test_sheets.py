@@ -16,8 +16,9 @@ def test_new_offers_are_sorted_by_match_descending_with_empty_match_last():
 def test_mirror_formulas_use_semicolons_for_polish_locale():
     a1, a2 = sheets.mirror_formulas(sheets.arg_separator("pl_PL"))
     assert a1 == "={Oferty!A1:T1}"                                   # A:T = Dodano ... Notatki (bez Źródło i Klucz)
-    assert a2 == ('=IFERROR(SORT(FILTER(Oferty!A2:T;Oferty!G2:G<>"";Oferty!G2:G<>"Do wysłania";'
-                  'Oferty!G2:G<>"Rezygnacja");8;FALSE);"Jeszcze nic nie wysłane")')      # Status = G, sortowanie po H (Wysłano CV)
+    c = ';Oferty!G2:G<>"";Oferty!G2:G<>"Do wysłania";Oferty!G2:G<>"Rezygnacja"'
+    assert a2 == (f'=IFERROR(SORT(FILTER(Oferty!A2:T{c});FILTER(LEFT(Oferty!F2:F;7)="Zniknęła"{c});TRUE;'
+                  f'FILTER(Oferty!H2:H{c});FALSE);"Jeszcze nic nie wysłane")')   # nieaktywne (F) na dół, potem po Wysłano CV (H)
 
 
 def test_mirror_formulas_use_commas_for_en_us():
