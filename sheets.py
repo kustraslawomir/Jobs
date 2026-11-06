@@ -11,9 +11,9 @@ import difficulty
 import level
 import seen
 
-HEADERS = ["Dodano", "Poziom", "Stanowisko", "Firma", "Link", "Wiek (dni)", "Trudność", "Aktywna", "Status", "Powód", "Wysłano CV", "Rozmowa",
-           "Następny krok", "Termin", "Match", "AI", "Widełki / forma", "Wymiar", "Kontakt", "Luki", "Dopisz do CV",
-           "Notatki", "Źródło", "Klucz"]
+HEADERS = ["Dodano", "Poziom", "Stanowisko", "Firma", "Link", "Wiek (dni)", "Trudność", "Match", "Aktywna", "Status", "Powód", "Wysłano CV", "Rozmowa",
+           "Następny krok", "Termin", "Widełki / forma", "Wymiar", "Luki", "AI", "Dopisz do CV",
+           "Notatki", "Klucz"]
 COL = {h: i for i, h in enumerate(HEADERS)}           # 0-based
 STATUSES = ["Do wysłania", "Do rozważenia", "Rozważam", "Wysłane", "Odpowiedź", "Rozmowa", "Zadanie domowe", "Oferta",
             "Przyjęta", "Odrzucone", "Rezygnacja", "Ghosting"]
@@ -338,10 +338,11 @@ def migration_requests(headers: list[str], sheet_id: int) -> list[dict]:
     def dim(i):
         return {"sheetId": sheet_id, "dimension": "COLUMNS", "startIndex": i, "endIndex": i + 1}
 
-    if "Alert" in h:
-        i = h.index("Alert")
-        reqs.append({"deleteDimension": {"range": dim(i)}})
-        h.pop(i)
+    for gone in ("Alert", "Kontakt", "Źródło"):                          # kolumny usunięte z układu (źródło zostaje w Kluczu, np. "justjoinit:123")
+        if gone in h:
+            i = h.index(gone)
+            reqs.append({"deleteDimension": {"range": dim(i)}})
+            h.pop(i)
 
     for name, anchor in (("Wiek (dni)", "Link"), ("Aktywna", "Wiek (dni)"), ("Trudność", "Aktywna"),       # puste kolumny wstawiane w tej kolejności
                          ("Poziom", "Match"), ("AI", "Poziom"), ("Powód", "Status")):
@@ -363,13 +364,16 @@ def migration_requests(headers: list[str], sheet_id: int) -> list[dict]:
     place_after("Poziom", "Dodano")                                      # Poziom na samym przodzie: B = Poziom, C = Stanowisko, D = Firma
     place_after("Stanowisko", "Poziom")
     place_after("Trudność", "Wiek (dni)")                                # Wiek, Trudność, Aktywna, Status
-    place_after("Aktywna", "Trudność")
-    place_after("Widełki / forma", "AI")
-    place_after("Kontakt", "Wymiar" if "Wymiar" in h else "Widełki / forma")
-    if "Wymiar" not in h and "Widełki / forma" in h:                   # pusta kolumna zaraz za Widełkami, przed Kontaktem
+    place_after("Match", "Trudność")                                     # Match zaraz po Trudności
+    place_after("Aktywna", "Match")
+    place_after("Widełki / forma", "Termin")                             # Termin, Widełki, Wymiar, AI, Kontakt
+    if "Wymiar" not in h and "Widełki / forma" in h:                   # pusta kolumna zaraz za Widełkami
         i = h.index("Widełki / forma") + 1
         reqs.append({"insertDimension": {"range": dim(i), "inheritFromBefore": False}})
         h.insert(i, "Wymiar")
+    place_after("Wymiar", "Widełki / forma")
+    place_after("Luki", "Wymiar")                                       # Widełki, Wymiar, Luki, AI
+    place_after("AI", "Luki")
     if h != HEADERS:
         raise ValueError(f"Po migracji nagłówki nie pasują do nowego układu. Są: {headers} -> {h}")
     return reqs
@@ -775,7 +779,7 @@ def seed_history(sh, cfg, ws):
         key = r[COL["Klucz"]].strip()
         if key and key not in history.by_key:
             day = seen.iso_date(r[COL["Dodano"]])
-            history.by_key[key] = seen.Seen(key, r[COL["Źródło"]].strip() or key.split(":", 1)[0], key,
+            history.by_key[key] = seen.Seen(key, key.split(":", 1)[0], key,
                                             first_seen=day, last_seen=day)
             added += 1
     if added or not history.by_key:
@@ -883,7 +887,6 @@ def offer_row(o, today: str, row_number: int | None = None, sep: str = ",") -> l
     row[COL["Luki"]] = ", ".join(o.gaps)
     row[COL["Dopisz do CV"]] = ", ".join(o.add_to_cv)
     row[COL["Notatki"]] = getattr(o, "note", "")
-    row[COL["Źródło"]] = o.source
     row[COL["Klucz"]] = o.key
     return row
 

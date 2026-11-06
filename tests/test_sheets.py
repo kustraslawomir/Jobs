@@ -15,12 +15,12 @@ def test_new_offers_are_sorted_by_match_descending_with_empty_match_last():
 
 def test_mirror_formulas_use_semicolons_for_polish_locale():
     a1, a2 = sheets.mirror_formulas(sheets.arg_separator("pl_PL"))
-    assert a1 == "={Oferty!A1:V1}"                                   # A:V = Dodano ... Notatki (bez Źródło i Klucz)
-    c = ';Oferty!I2:I<>"";Oferty!I2:I<>"Do wysłania"'
-    rank = ('ARRAYFORMULA(IF((Oferty!I2:I="Odrzucone")+(Oferty!I2:I="Rezygnacja")+(Oferty!I2:I="Ghosting");3;'
-            'IF(Oferty!H2:H="Nie";2;IF((Oferty!I2:I="Do rozważenia")+(Oferty!I2:I="Rozważam");1;0))))')
-    assert a2 == (f'=IFERROR(SORT(FILTER(Oferty!A2:V{c});FILTER({rank}{c});TRUE;'
-                  f'FILTER(Oferty!K2:K{c});FALSE);"Jeszcze nic nie wysłane")')   # grupa 0-3, potem po Wysłano CV (K)
+    assert a1 == "={Oferty!A1:U1}"                                   # A:U = Dodano ... Notatki (bez Klucza)
+    c = ';Oferty!J2:J<>"";Oferty!J2:J<>"Do wysłania"'
+    rank = ('ARRAYFORMULA(IF((Oferty!J2:J="Odrzucone")+(Oferty!J2:J="Rezygnacja")+(Oferty!J2:J="Ghosting");3;'
+            'IF(Oferty!I2:I="Nie";2;IF((Oferty!J2:J="Do rozważenia")+(Oferty!J2:J="Rozważam");1;0))))')
+    assert a2 == (f'=IFERROR(SORT(FILTER(Oferty!A2:U{c});FILTER({rank}{c});TRUE;'
+                  f'FILTER(Oferty!L2:L{c});FALSE);"Jeszcze nic nie wysłane")')   # grupa 0-3, potem po Wysłano CV (L)
 
 
 def test_mirror_formulas_use_commas_for_en_us():
@@ -34,7 +34,7 @@ def test_filter_views_cover_whole_columns_and_skip_existing_ones():
     titles = {"Do przejrzenia", "Najnowsze", "AI", "Część etatu / zlecenia", "Świeże", "Spokojne", "Mid", "Nieaktywne"}
     assert set(f) == titles == set(sheets.FILTER_VIEW_TITLES)
     todo = f["Do przejrzenia"]
-    assert todo["range"] == {"sheetId": 7, "startColumnIndex": 0, "endColumnIndex": 24}       # A:V, bez ograniczenia wierszy
+    assert todo["range"] == {"sheetId": 7, "startColumnIndex": 0, "endColumnIndex": 22}       # A:V, bez ograniczenia wierszy
     assert todo["sortSpecs"] == [{"dimensionIndex": C["Match"], "sortOrder": "DESCENDING"}]
     assert todo["criteria"] == {str(C["Status"]): {"condition": {"type": "TEXT_EQ", "values": [{"userEnteredValue": "Do wysłania"}]}},
                                 str(C["Poziom"]): {"hiddenValues": ["Senior+"]}, str(C["Aktywna"]): {"hiddenValues": ["Nie"]}}
@@ -64,8 +64,8 @@ def test_blank_sheet_detection():
     assert not sheets.is_blank([["", ""], ["", "x"]])
 
 
-NEW = ["Dodano", "Poziom", "Stanowisko", "Firma", "Link", "Wiek (dni)", "Trudność", "Aktywna", "Status", "Powód", "Wysłano CV", "Rozmowa", "Następny krok",
-       "Termin", "Match", "AI", "Widełki / forma", "Wymiar", "Kontakt", "Luki", "Dopisz do CV", "Notatki", "Źródło", "Klucz"]
+NEW = ["Dodano", "Poziom", "Stanowisko", "Firma", "Link", "Wiek (dni)", "Trudność", "Match", "Aktywna", "Status", "Powód", "Wysłano CV", "Rozmowa", "Następny krok",
+       "Termin", "Widełki / forma", "Wymiar", "Luki", "AI", "Dopisz do CV", "Notatki", "Klucz"]
 NO_LEVEL = [h for h in NEW if h not in ("Wiek (dni)", "Aktywna", "Poziom", "Trudność", "AI", "Powód", "Wymiar")]   # 17 kolumn, sprzed Poziomu
 NO_AGE = [h for h in NEW if h not in ("Wiek (dni)", "Aktywna", "Trudność", "Powód")]                             # z Poziomem, AI i Wymiarem
 NO_WYMIAR = [h for h in NEW if h != "Wymiar"]
@@ -113,12 +113,12 @@ def kinds(reqs):
     return [list(r)[0] for r in reqs]
 
 
-def test_new_layout_has_24_columns_with_level_in_front_and_key_last():
+def test_new_layout_has_22_columns_with_level_in_front_and_key_last():
     C = sheets.COL
-    assert sheets.HEADERS == NEW and len(NEW) == 24
+    assert sheets.HEADERS == NEW and len(NEW) == 22
     assert (C["Poziom"], C["Stanowisko"], C["Firma"], C["Link"], C["Wiek (dni)"], C["Trudność"], C["Aktywna"], C["Status"], C["Powód"], C["Match"],
-            C["AI"], C["Widełki / forma"], C["Wymiar"], C["Kontakt"], C["Notatki"], C["Klucz"]) == (1, 2, 3, 4, 5, 6, 7, 8, 9, 14, 15, 16, 17, 18, 21, 23)
-    assert sheets.MIRROR_COLS == 22 and sheets.MIRROR_LAST == "V"
+            C["AI"], C["Widełki / forma"], C["Wymiar"], C["Luki"], C["Notatki"], C["Klucz"]) == (1, 2, 3, 4, 5, 6, 8, 9, 10, 7, 18, 15, 16, 17, 20, 21)
+    assert sheets.MIRROR_COLS == 21 and sheets.MIRROR_LAST == "U"
     assert "Alert" not in C
 
 
@@ -134,7 +134,8 @@ def test_migration_of_the_live_layout_moves_only_poziom_to_the_front():
 
 
 def test_migration_of_17_column_layout_inserts_seven_columns_and_moves_poziom():
-    no_level = [h for h in NEW if h not in ("Wiek (dni)", "Aktywna", "Poziom", "Trudność", "AI", "Powód", "Wymiar")]
+    no_level = ["Dodano", "Stanowisko", "Firma", "Link", "Status", "Wysłano CV", "Rozmowa", "Następny krok", "Termin",
+                "Match", "Widełki / forma", "Kontakt", "Luki", "Dopisz do CV", "Notatki", "Źródło", "Klucz"]
     reqs = sheets.migration_requests(no_level, 5)
     assert kinds(reqs).count("insertDimension") == 7 and "moveDimension" in kinds(reqs) and apply(no_level, reqs) == NEW
 
@@ -195,13 +196,14 @@ def test_offer_row_puts_values_in_the_new_columns():
                         add_to_cv=["Compose"], note="uwaga", level="Senior+", difficulty=7, ai="workflow (llm)", workload="Część etatu (1/2)",
                         source="justjoinit", key="justjoinit:1", salary_text=lambda: "B2B 20 000–25 000")
     row = sheets.offer_row(o, "2026-10-27", 12, ";")
-    assert len(row) == 24
+    assert len(row) == 22
     assert (row[C["Match"]], row[C["Poziom"]], row[C["AI"]], row[C["Widełki / forma"]], row[C["Wymiar"]]) == (
         0.83, "Senior+", "workflow (llm)", "B2B 20 000–25 000", "Część etatu (1/2)")
-    assert (row[C["Kontakt"]], row[C["Luki"]], row[C["Dopisz do CV"]], row[C["Notatki"]]) == ("", "Java", "Compose", "uwaga")
-    assert (row[C["Źródło"]], row[C["Klucz"]], row[C["Status"]], row[C["Dodano"]]) == ("justjoinit", "justjoinit:1", "Do wysłania", "2026-10-27")
+    assert (row[C["Luki"]], row[C["Dopisz do CV"]], row[C["Notatki"]]) == ("Java", "Compose", "uwaga")
+    assert (row[C["Klucz"]], row[C["Status"]], row[C["Dodano"]]) == ("justjoinit:1", "Do wysłania", "2026-10-27")
+    assert "Kontakt" not in C and "Źródło" not in C
     assert row[C["Aktywna"]] == "Tak" and row[C["Trudność"]] == 7
-    assert row[C["Wiek (dni)"]] == '=IF(COUNTIF(_widziane!$A:$A;$X12)=0;"";TODAY()-MINIFS(_widziane!$J:$J;_widziane!$A:$A;$X12))'
+    assert row[C["Wiek (dni)"]] == '=IF(COUNTIF(_widziane!$A:$A;$V12)=0;"";TODAY()-MINIFS(_widziane!$J:$J;_widziane!$A:$A;$V12))'
 
 
 def test_delete_backup_refuses_anything_but_backup_tabs():
@@ -247,7 +249,7 @@ CFG_LEVEL = __import__("yaml").safe_load(open(os.path.join(os.path.dirname(os.pa
 
 def test_level_backfill_fills_only_blank_cells_and_appends_to_notes():
     def row(firma, tytul, poziom, notatki, klucz):
-        r = [""] * 24
+        r = [""] * 22
         r[sheets.COL["Firma"]], r[sheets.COL["Stanowisko"]], r[sheets.COL["Poziom"]], r[sheets.COL["Notatki"]], r[sheets.COL["Klucz"]] = firma, tytul, poziom, notatki, klucz
         return r
     rows = [row("A", "Android Developer", "", "ręczna notatka", "x:1"),       # wiersz 2: opis -> Senior+ (8 lat)
@@ -266,7 +268,7 @@ CFG_AI = __import__("yaml").safe_load(open(os.path.join(os.path.dirname(os.path.
 
 def test_ai_backfill_fills_only_blank_cells_with_a_description_and_a_hit():
     def row(tytul, ai, klucz):
-        r = [""] * 24
+        r = [""] * 22
         r[sheets.COL["Firma"]], r[sheets.COL["Stanowisko"]], r[sheets.COL["AI"]], r[sheets.COL["Klucz"]] = "Firma", tytul, ai, klucz
         return r
     rows = [row("Android Developer", "", "x:1"), row("Android Developer", "ręcznie", "x:2"),
@@ -281,13 +283,13 @@ def test_format_rules_are_status_based_without_purple_and_rebuilt_only_when_diff
     assert [r["index"] for r in rules] == [0, 1, 2, 3]            # odrzucone > nieaktywne > w procesie > do rozważenia
     rejected, inactive, sent, consider = (r["rule"] for r in rules)
     f = lambda r: r["booleanRule"]["condition"]["values"][0]["userEnteredValue"]
-    assert f(rejected) == '=OR($I2="Odrzucone",$I2="Rezygnacja",$I2="Ghosting")'
-    assert f(inactive) == '=$H2="Nie"'
-    assert f(sent) == '=OR($I2="Wysłane",$I2="Odpowiedź",$I2="Rozmowa",$I2="Zadanie domowe",$I2="Oferta",$I2="Przyjęta")'
-    assert f(consider) == '=OR($I2="Do rozważenia",$I2="Rozważam")'
+    assert f(rejected) == '=OR($J2="Odrzucone",$J2="Rezygnacja",$J2="Ghosting")'
+    assert f(inactive) == '=$I2="Nie"'
+    assert f(sent) == '=OR($J2="Wysłane",$J2="Odpowiedź",$J2="Rozmowa",$J2="Zadanie domowe",$J2="Oferta",$J2="Przyjęta")'
+    assert f(consider) == '=OR($J2="Do rozważenia",$J2="Rozważam")'
     assert f(sheets.format_requests(7, [], ";")[0]["addConditionalFormatRule"]["rule"]).count(";") == 2        # locale pl
-    assert rejected["ranges"] == [{"sheetId": 7, "startRowIndex": 1, "startColumnIndex": 0, "endColumnIndex": 24}]
-    assert sheets.format_requests(7, [], width=sheets.MIRROR_COLS)[-1]["addConditionalFormatRule"]["rule"]["ranges"][0]["endColumnIndex"] == 22
+    assert rejected["ranges"] == [{"sheetId": 7, "startRowIndex": 1, "startColumnIndex": 0, "endColumnIndex": 22}]
+    assert sheets.format_requests(7, [], width=sheets.MIRROR_COLS)[-1]["addConditionalFormatRule"]["rule"]["ranges"][0]["endColumnIndex"] == 21
     assert rejected["booleanRule"]["format"]["textFormat"]["strikethrough"] is True
     for r in (rejected, inactive, sent, consider):             # żadnych fioletów: niebieski nigdy nie przewyższa zieleni
         bg = r["booleanRule"]["format"]["backgroundColor"]
@@ -305,7 +307,7 @@ def test_old_rules_purple_senior_plus_and_age_colors_are_all_dropped_before_the_
 
 def test_workload_backfill_fills_blank_cells_only_and_leaves_notes_alone():
     def row(wymiar, klucz):
-        r = [""] * 24
+        r = [""] * 22
         r[sheets.COL["Stanowisko"]], r[sheets.COL["Wymiar"]], r[sheets.COL["Klucz"]] = "Android Developer", wymiar, klucz
         return r
     rows = [row("", "x:1"), row("Zlecenie / kontrakt", "x:2"), row("", "x:3"), row("", "x:4"), row("", "x:5")]
@@ -315,7 +317,7 @@ def test_workload_backfill_fills_blank_cells_only_and_leaves_notes_alone():
 
 def test_age_backfill_fills_blank_age_formula_and_active_only_for_rows_with_a_key():
     def row(firma, klucz, wiek="", aktywna=""):
-        r = [""] * 24
+        r = [""] * 22
         r[sheets.COL["Firma"]], r[sheets.COL["Klucz"]], r[sheets.COL["Wiek (dni)"]], r[sheets.COL["Aktywna"]] = firma, klucz, wiek, aktywna
         return r
     rows = [row("A", "x:1"), row("B", "x:2", "5", "Zniknęła 2026-10-01"), row("C", ""), row("", ""), row("D", "x:4", "", "Tak")]
@@ -327,7 +329,7 @@ def test_age_backfill_fills_blank_age_formula_and_active_only_for_rows_with_a_ke
 def test_activity_updates_touch_only_changed_cells_and_keep_the_first_disappearance_date():
     from seen import Summary
     def row(klucz, aktywna, notatki):
-        r = [""] * 24
+        r = [""] * 22
         r[sheets.COL["Firma"]], r[sheets.COL["Klucz"]], r[sheets.COL["Aktywna"]], r[sheets.COL["Notatki"]] = "F", klucz, aktywna, notatki
         return r
     rows = [row("a", "Tak", "Poziom: x"), row("b", "Tak", ""), row("c", "Zniknęła 2026-10-01", ""), row("d", "", "stara. Odświeżana 2×"),
@@ -343,7 +345,7 @@ def test_difficulty_backfill_fills_only_blank_cells_and_works_without_a_descript
     C = sheets.COL
     cfg = {"level": CFG_LEVEL, "difficulty": __import__("yaml").safe_load(open("config.yaml", encoding="utf-8"))["difficulty"]}
     def row(titel, trud, poziom, klucz):
-        r = [""] * 24
+        r = [""] * 22
         r[sheets.COL["Firma"]], r[sheets.COL["Stanowisko"]], r[C["Poziom"]], r[C["Trudność"]], r[C["Klucz"]] = "Firma", titel, poziom, trud, klucz
         return r
     rows = [row("Android Developer", "", "Mid", "a"), row("Android Developer", "5", "Mid", "b"),
@@ -363,7 +365,7 @@ def test_sort_rank_orders_sent_then_considering_then_rest_then_inactive_then_rej
     C = sheets.COL
 
     def row(status="", active="Tak", firma="F"):
-        r = [""] * 24
+        r = [""] * 22
         r[C["Firma"]], r[C["Status"]], r[C["Aktywna"]] = firma, status, active
         return r
     ranks = [sheets.sort_rank(row(s, a)) for s, a in (("Wysłane", "Tak"), ("Rozmowa", "Tak"), ("Rozważam", "Tak"), ("Do rozważenia", "Tak"),
