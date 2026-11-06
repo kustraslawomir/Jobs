@@ -331,3 +331,17 @@ def test_consideration_statuses_are_selectable_and_show_up_in_the_mirror():
     assert sheets.STATUSES[:3] == ["Do wysłania", "Do rozważenia", "Rozważam"]
     _, a2 = sheets.mirror_formulas(";")
     assert '<>"Do wysłania"' in a2 and '<>"Rezygnacja"' not in a2 and "Rozważam" in a2      # lustro wycina tylko Do wysłania; odrzucone leżą na dole
+
+
+def test_sort_rank_orders_sent_then_considering_then_rest_then_inactive_then_rejected():
+    C = sheets.COL
+
+    def row(status="", active="Tak", firma="F"):
+        r = [""] * 24
+        r[C["Firma"]], r[C["Status"]], r[C["Aktywna"]] = firma, status, active
+        return r
+    ranks = [sheets.sort_rank(row(s, a)) for s, a in (("Wysłane", "Tak"), ("Rozmowa", "Tak"), ("Rozważam", "Tak"), ("Do rozważenia", "Tak"),
+                                                       ("Do wysłania", "Tak"), ("", "Tak"), ("Do wysłania", "Nie"), ("Wysłane", "Nie"),
+                                                       ("Rezygnacja", "Tak"), ("Odrzucone", "Nie"))]
+    assert ranks == [0, 0, 1, 1, 2, 2, 3, 3, 4, 4]
+    assert sheets.sort_rank(row(firma="")) == 9

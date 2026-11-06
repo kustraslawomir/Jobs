@@ -8,7 +8,7 @@ on:
       mode:
         description: "Tryb"
         type: choice
-        options: [run, init, dry-run, migrate, report, add, delete-backup, export]
+        options: [run, init, dry-run, migrate, report, add, delete-backup, export, sort]
         default: run
       backup:
         description: "Nazwa kopii zapasowej do usunięcia (tryb delete-backup)"
@@ -55,6 +55,7 @@ jobs:
             add)     python main.py --add --url "$ADD_URL" --text "$ADD_TEXT" ;;
             delete-backup) python main.py --delete-backup "$BACKUP_NAME" ;;
             export)  python main.py --export Oferty.xlsx ;;
+            sort)    python main.py --sort ;;
             dry-run) python main.py --dry-run --runner cloud ;;
             *)       python main.py --runner cloud ;;
           esac

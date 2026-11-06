@@ -274,6 +274,47 @@ def ensure_formats(sh, ws, sep: str, width: int | None = None):
     print(f"Formatowanie warunkowe {ws.title}: {'przebudowane' if reqs else 'bez zmian'} ({len(reqs)} operacji).")
 
 
+def sort_rank(row: list) -> int:
+    """Grupa wiersza Ofert przy sortowaniu: 0 wysłane / w procesie, 1 Do rozważenia i Rozważam, 2 reszta (Do wysłania, bez statusu),
+    3 nieaktywne, 4 odrzucone (na samym dole), 9 puste wiersze."""
+    row = list(row) + [""] * len(HEADERS)
+    if not (str(row[COL["Firma"]]).strip() or str(row[COL["Stanowisko"]]).strip()):
+        return 9
+    status = str(row[COL["Status"]]).strip()
+    if status in REJECTED:
+        return 4
+    if str(row[COL["Aktywna"]]).strip() == INACTIVE:
+        return 3
+    if status in IN_PROCESS:
+        return 0
+    if status in CONSIDER:
+        return 1
+    return 2
+
+
+def sort_offers(sh, ws):
+    """Fizycznie układa wiersze Ofert (nic nie usuwa i nie zmienia): wysłane > rozważam > reszta > nieaktywne > odrzucone, a w grupie
+    świeższe "Wysłano CV", potem wyższy Match. Przez chwilową kolumnę pomocniczą za Kluczem; formuły z odwołaniem do własnego wiersza
+    (Wiek) przesuwają się razem z wierszem."""
+    rows = ws.get_all_values()[1:]
+    if not rows:
+        return
+    n, helper = len(rows), len(HEADERS)
+    if ws.col_count <= helper:
+        ws.add_cols(1)
+    ws.update(range_name=f"{col_letter(helper)}2:{col_letter(helper)}{n + 1}", values=[[sort_rank(r)] for r in rows])
+    sh.batch_update({"requests": [
+        {"sortRange": {"range": {"sheetId": ws.id, "startRowIndex": 1, "endRowIndex": n + 1, "startColumnIndex": 0, "endColumnIndex": helper + 1},
+                       "sortSpecs": [{"dimensionIndex": helper, "sortOrder": "ASCENDING"},
+                                     {"dimensionIndex": COL["Wysłano CV"], "sortOrder": "DESCENDING"},
+                                     {"dimensionIndex": COL["Match"], "sortOrder": "DESCENDING"}]}},
+        {"deleteDimension": {"range": {"sheetId": ws.id, "dimension": "COLUMNS", "startIndex": helper, "endIndex": helper + 1}}},
+    ]})
+    ranks = [sort_rank(r) for r in rows]
+    print(f"Oferty posortowane: {n} wierszy; wysłane/proces {ranks.count(0)}, rozważam {ranks.count(1)}, reszta {ranks.count(2)}, "
+          f"nieaktywne {ranks.count(3)}, odrzucone {ranks.count(4)}.")
+
+
 def check_layout(ws):
     """Zatrzymuje zapis, gdy nagłówki Ofert nie pasują do HEADERS (np. przed migracją): dane trafiłyby do złych kolumn."""
     headers = ws.row_values(1)

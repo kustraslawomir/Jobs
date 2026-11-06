@@ -156,6 +156,7 @@ def main():
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--delete-backup", metavar="NAZWA", help="usuń kopię zapasową Oferty_backup_* po migracji")
     ap.add_argument("--export", metavar="PLIK", help="zapisz cały arkusz jako plik .xlsx (tylko odczyt)")
+    ap.add_argument("--sort", action="store_true", help="tylko posortuj zakładkę Oferty (wysłane > rozważam > reszta > nieaktywne > odrzucone)")
     ap.add_argument("--report", action="store_true", help="tylko odczyt: poziomy, oferty z AI, trafienia samym \"ai\"")
     ap.add_argument("--add", action="store_true", help="dodaj ofertę ręcznie (--url i/lub --text), bez filtrów, z dedupem i ATS")
     ap.add_argument("--url", help="link do oferty (z --add)")
@@ -185,6 +186,9 @@ def main():
             return
         if args.export:
             sheets.export_xlsx(sh, args.export)
+            return
+        if args.sort:
+            sheets.sort_offers(sh, sh.worksheet(cfg["sheet"]["tab_offers"]))
             return
         if args.report:
             sheets.report(sh, cfg)
@@ -278,6 +282,7 @@ def main():
         if updates:
             ws.batch_update(updates, value_input_option="RAW")
         sheets.write_seen(sh, cfg, history)
+        sheets.sort_offers(sh, ws)
         gone = sum(1 for s in summaries.values() if s.disappeared)
         print(f"Historia: {len(history.by_key)} wpisów, zaktualizowano {len(updates)} komórek (Aktywna / Notatki), "
               f"zniknęło ofert: {gone}")
