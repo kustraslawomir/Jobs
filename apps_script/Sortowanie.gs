@@ -29,6 +29,7 @@ function sortujOferty() {
   sh.getRange(2, 1, last - 1, helper).sort([
     {column: helper, ascending: true},
     {column: c('Wysłano CV') + 1, ascending: false},
+    {column: c('Wiek (dni)') + 1, ascending: true},
     {column: c('Match') + 1, ascending: false}]);
   sh.deleteColumn(helper);
 }

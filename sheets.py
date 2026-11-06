@@ -298,7 +298,7 @@ def sort_rank(row: list) -> int:
 
 def sort_offers(sh, ws):
     """Fizycznie układa wiersze Ofert (nic nie usuwa i nie zmienia): wysłane > rozważam > reszta > nieaktywne > odrzucone, a w grupie
-    świeższe "Wysłano CV", potem wyższy Match. Przez chwilową kolumnę pomocniczą za Kluczem; formuły z odwołaniem do własnego wiersza
+    świeższe "Wysłano CV", potem najmłodsze ogłoszenia (Wiek rosnąco), potem wyższy Match. Przez chwilową kolumnę pomocniczą za Kluczem; formuły z odwołaniem do własnego wiersza
     (Wiek) przesuwają się razem z wierszem."""
     rows = ws.get_all_values()[1:]
     if not rows:
@@ -311,6 +311,7 @@ def sort_offers(sh, ws):
         {"sortRange": {"range": {"sheetId": ws.id, "startRowIndex": 1, "endRowIndex": n + 1, "startColumnIndex": 0, "endColumnIndex": helper + 1},
                        "sortSpecs": [{"dimensionIndex": helper, "sortOrder": "ASCENDING"},
                                      {"dimensionIndex": COL["Wysłano CV"], "sortOrder": "DESCENDING"},
+                                     {"dimensionIndex": COL["Wiek (dni)"], "sortOrder": "ASCENDING"},
                                      {"dimensionIndex": COL["Match"], "sortOrder": "DESCENDING"}]}},
         {"deleteDimension": {"range": {"sheetId": ws.id, "dimension": "COLUMNS", "startIndex": helper, "endIndex": helper + 1}}},
     ]})
