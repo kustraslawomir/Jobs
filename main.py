@@ -96,6 +96,10 @@ def finish(o, verdict, cfg, extra_notes=()):
     o.level = assessment.level
     if assessment.note:
         notes.append(assessment.note)
+    out = level.dealbreakers(f"{o.title} {o.description}", cfg["level"], cfg.get("dealbreakers", []))
+    if out:
+        o.status = "Rezygnacja"
+        notes.append(f"Odpada: {', '.join(out)}")
     o.note = ". ".join(notes)
 
 

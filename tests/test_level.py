@@ -132,3 +132,15 @@ def test_leadership_titles_are_filtered_out(title):
 @pytest.mark.parametrize("title", ["Senior Android Developer", "Mid Kotlin Developer", "Android Developer", "Staffing Android Dev"])
 def test_regular_titles_still_pass(title):
     assert title_reason(title, CONFIG["filters"]) is None
+
+
+@pytest.mark.parametrize("text,expected", [
+    ("Rekrutacja: live coding z inżynierem", ["live coding"]),
+    ("LeetCode style tasks", ["algorytmy / LeetCode"]),
+    ("No live coding, only a chat", []),
+    ("Rekrutacja bez live codingu", []),
+    ("without any leetcode", []),
+    ("zwykła oferta, rozmowa techniczna", []),
+])
+def test_dealbreakers(text, expected):
+    assert level.dealbreakers(text, CFG, ["live coding", "algorytmy / LeetCode"]) == expected

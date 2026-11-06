@@ -100,6 +100,21 @@ def bump_signals(text: str, cfg: dict) -> list[str]:
             if any(re.search(p, t) for p in patterns)]
 
 
+_NEGATION_BEFORE = re.compile(r"(?:^| )(?:no|not|without|zero|nie|bez|brak)(?: \w+){0,2} $")
+
+
+def dealbreakers(text: str, cfg: dict, labels) -> list[str]:
+    """Etykiety z `labels` (wpisy level.bump_signals), których regex pasuje w tekście poza zaprzeczeniem ("no live coding", "bez live codingu")."""
+    t = f" {normalize(text)} "
+    out = []
+    for label in labels:
+        for pattern in cfg["bump_signals"].get(label, []):
+            if any(not _NEGATION_BEFORE.search(t[max(0, m.start() - 24):m.start()]) for m in re.finditer(pattern, t)):
+                out.append(label)
+                break
+    return out
+
+
 def assess(title: str, description: str, portal, cfg: dict) -> Assessment:
     """cfg = sekcja `level` z config.yaml. portal = wartości pól seniority z API źródła (lista albo pusta)."""
     reasons, level = [], None

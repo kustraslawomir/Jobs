@@ -756,7 +756,7 @@ def offer_row(o, today: str, row_number: int | None = None, sep: str = ",") -> l
     row[COL["Link"]] = o.url
     row[COL["Wiek (dni)"]] = age_formula(row_number, sep) if row_number else ""
     row[COL["Aktywna"]] = "Tak" if row_number else ""
-    row[COL["Status"]] = "Do wysłania"
+    row[COL["Status"]] = getattr(o, "status", "") or "Do wysłania"
     row[COL["Match"]] = round(o.match, 2) if o.match is not None else ""
     row[COL["Poziom"]] = getattr(o, "level", "")
     row[COL["AI"]] = getattr(o, "ai", "")

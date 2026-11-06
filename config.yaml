@@ -79,6 +79,11 @@ level:
     "4+ etapy rekrutacji":
       - '(?:[4-9]|four|five|six|cztery|piec|szesc) (?:stage|stages|step|steps|round|rounds|interview|interviews|etap\w*|rozmow\w*)'
 
+# twarde dyskwalifikatory rozmowy: etykiety z level.bump_signals. Oferta z takim sygnałem trafia do arkusza,
+# ale od razu ze statusem "Rezygnacja" (znika z "Do przejrzenia" i z Aplikowane) i notatką "Odpada: ...".
+# Zdanie z zaprzeczeniem ("no live coding", "bez live codingu") nie liczy się.
+dealbreakers: ["live coding", "algorytmy / LeetCode"]
+
 # oferty związane z AI (kolumna AI, moduł ai_flag.py). Wpisy to regexy na tekście znormalizowanym
 # (małe litery, bez ogonków i interpunkcji), dopasowywane jako całe słowa z opcjonalnym "s" na końcu.
 ai:
