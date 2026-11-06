@@ -381,3 +381,13 @@ def test_link_is_a_hyperlink_showing_only_the_domain_and_backfill_converts_plain
     assert sheets.link_formula("", ";") == "" and sheets.link_formula("nie link", ";") == "nie link"
     cells = [["https://a.pl/1"], ['=HYPERLINK("https://b.pl/2";"b.pl")'], [""], ["tekst"]]
     assert sheets.link_backfill(cells, ";") == [(2, '=HYPERLINK("https://a.pl/1";"a.pl")')]
+
+
+def test_validations_are_cleared_first_and_aktywna_accepts_only_tak_nie():
+    reqs = sheets.validation_requests(7)
+    assert reqs[0] == {"setDataValidation": {"range": {"sheetId": 7, "startRowIndex": 1}}}          # bez reguły = czyszczenie całej zakładki
+    by_col = {r["setDataValidation"]["range"]["startColumnIndex"]: r["setDataValidation"]["rule"] for r in reqs[1:]}
+    C = sheets.COL
+    assert set(by_col) == {C["Status"], C["Poziom"], C["Aktywna"]} and C["Wiek (dni)"] not in by_col
+    assert [v["userEnteredValue"] for v in by_col[C["Aktywna"]]["condition"]["values"]] == ["Tak", "Nie"] and by_col[C["Aktywna"]]["strict"] is True
+    assert by_col[C["Status"]]["strict"] is False

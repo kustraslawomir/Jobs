@@ -613,6 +613,19 @@ def delete_backup(sh, name: str):
     print("Zakładki teraz:", [w.title for w in sh.worksheets()])
 
 
+def validation_requests(sid: int) -> list[dict]:
+    """Walidacje list w Ofertach. Najpierw czyści WSZYSTKIE walidacje danych (po przestawieniu kolumn zostawały na złych kolumnach,
+    np. lista statusów na Aktywnej, lista poziomów na Wieku), potem ustawia: Status (lista, nieścisła), Poziom (lista, ścisła), Aktywna (tylko Tak/Nie)."""
+    def one_of(col, values, strict):
+        return {"setDataValidation": {"range": {"sheetId": sid, "startRowIndex": 1, "startColumnIndex": col, "endColumnIndex": col + 1},
+                                      "rule": {"condition": {"type": "ONE_OF_LIST", "values": [{"userEnteredValue": v} for v in values]},
+                                               "showCustomUi": True, "strict": strict}}}
+    return [{"setDataValidation": {"range": {"sheetId": sid, "startRowIndex": 1}}},
+            one_of(COL["Status"], STATUSES, False),
+            one_of(COL["Poziom"], level.LEVELS, True),
+            one_of(COL["Aktywna"], ["Tak", INACTIVE], True)]
+
+
 def init(sh, cfg, skills_csv="skills.csv"):
     """Zakładki, nagłówki, słownik, walidacja statusów, widoki filtrów, lustro. Idempotentne, nie nadpisuje danych.
     Stary układ kolumn Ofert wymaga najpierw migrate()."""
@@ -632,14 +645,9 @@ def init(sh, cfg, skills_csv="skills.csv"):
                         "cell": {"userEnteredFormat": {"textFormat": {"bold": True, "foregroundColor": {"red": 1, "green": 1, "blue": 1}},
                                                        "backgroundColor": {"red": 0.12, "green": 0.31, "blue": 0.47}, "wrapStrategy": "WRAP"}},
                         "fields": "userEnteredFormat(textFormat,backgroundColor,wrapStrategy)"}},
-        {"setDataValidation": {"range": {"sheetId": sid, "startRowIndex": 1, "startColumnIndex": COL["Status"], "endColumnIndex": COL["Status"] + 1},
-                               "rule": {"condition": {"type": "ONE_OF_LIST", "values": [{"userEnteredValue": v} for v in STATUSES]},
-                                        "showCustomUi": True, "strict": False}}},
+        *validation_requests(sid),
         {"repeatCell": {"range": {"sheetId": sid, "startRowIndex": 1, "startColumnIndex": COL["Match"], "endColumnIndex": COL["Match"] + 1},
                         "cell": {"userEnteredFormat": {"numberFormat": {"type": "PERCENT", "pattern": "0%"}}}, "fields": "userEnteredFormat.numberFormat"}},
-        {"setDataValidation": {"range": {"sheetId": sid, "startRowIndex": 1, "startColumnIndex": COL["Poziom"], "endColumnIndex": COL["Poziom"] + 1},
-                               "rule": {"condition": {"type": "ONE_OF_LIST", "values": [{"userEnteredValue": v} for v in level.LEVELS]},
-                                        "showCustomUi": True, "strict": True}}},
         {"repeatCell": {"range": {"sheetId": sid, "startRowIndex": 1, "startColumnIndex": COL["Wiek (dni)"], "endColumnIndex": COL["Wiek (dni)"] + 1},
                         "cell": {"userEnteredFormat": {"numberFormat": {"type": "NUMBER", "pattern": "0"}}}, "fields": "userEnteredFormat.numberFormat"}},
         {"updateDimensionProperties": {"range": {"sheetId": sid, "dimension": "COLUMNS", "startIndex": COL["Klucz"], "endIndex": COL["Klucz"] + 1},
