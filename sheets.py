@@ -35,11 +35,17 @@ SKILL_HEADERS = ["Kategoria", "Keyword", "Wariant 2", "Wariant 3", "Wariant 4", 
 
 
 def export_xlsx(sh, path: str):
-    """Tylko odczyt: zapisuje cały arkusz (wszystkie zakładki) jako .xlsx przez eksport Google Drive."""
-    data = sh.export(format=gspread.utils.ExportFormat.EXCEL)
-    with open(path, "wb") as fh:
-        fh.write(data)
-    print(f"Eksport: {path}, {len(data)} bajtów")
+    """Tylko odczyt: zapisuje wartości wszystkich zakładek jako .xlsx (przez Sheets API, bez Dysku). Bez formatowania i widoków filtrów."""
+    from openpyxl import Workbook
+    wb = Workbook()
+    wb.remove(wb.active)
+    for ws in sh.worksheets():
+        out = wb.create_sheet(ws.title[:31])
+        for row in ws.get_all_values():
+            out.append(row)
+        out.freeze_panes = "A2"
+        print(f"Eksport: {ws.title}, {out.max_row} wierszy")
+    wb.save(path)
 
 
 def connect():
