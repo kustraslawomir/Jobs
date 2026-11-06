@@ -562,6 +562,11 @@ def report(sh, cfg):
     print("Nagłówki Ofert:", ws.row_values(1))
     meta = sh.fetch_sheet_metadata(params={"fields": "properties.locale,sheets(properties(sheetId,title),conditionalFormats)"})
     print("Locale arkusza:", meta["properties"]["locale"])
+    grid = ws.spreadsheet.fetch_sheet_metadata(params={"includeGridData": "true", "ranges": f"{ws.title}!A2:{col_letter(len(HEADERS) - 1)}2",
+                                                       "fields": "sheets.data.rowData.values.dataValidation"})
+    cells = grid["sheets"][0]["data"][0]["rowData"][0]["values"]
+    print("Walidacje wiersza 2:", {HEADERS[i]: [v.get("userEnteredValue") for v in c["dataValidation"]["condition"].get("values", [])][:4]
+                                    for i, c in enumerate(cells) if c.get("dataValidation")})
     for sheet in meta["sheets"]:
         for r in sheet.get("conditionalFormats", []):
             print("  reguła", sheet["properties"]["title"], json.dumps(r, ensure_ascii=False))
