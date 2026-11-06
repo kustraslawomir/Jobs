@@ -138,12 +138,8 @@ class History:
 
 
 def active_value(s: Summary, current: str, today: str) -> str:
-    """"Tak" albo "Zniknęła RRRR-MM-DD" (data pierwszego wykrycia zostaje przy kolejnych runach)."""
-    if not s.disappeared:
-        return "Tak"
-    if (current or "").startswith("Zniknęła"):
-        return current
-    return f"Zniknęła {today}"
+    """"Tak" albo "Nie" (oferta zniknęła). Stare wpisy "Zniknęła RRRR-MM-DD" są zamieniane na "Nie"."""
+    return "Nie" if s.disappeared else "Tak"
 
 
 def tokens(s: Summary) -> list[str]:

@@ -11,8 +11,8 @@ import difficulty
 import level
 import seen
 
-HEADERS = ["Dodano", "Firma", "Stanowisko", "Link", "Wiek (dni)", "Aktywna", "Status", "Wysłano CV", "Rozmowa",
-           "Następny krok", "Termin", "Match", "Poziom", "Trudność", "AI", "Widełki / forma", "Wymiar", "Kontakt", "Luki", "Dopisz do CV",
+HEADERS = ["Dodano", "Firma", "Stanowisko", "Link", "Wiek (dni)", "Aktywna", "Trudność", "Status", "Wysłano CV", "Rozmowa",
+           "Następny krok", "Termin", "Match", "Poziom", "AI", "Widełki / forma", "Wymiar", "Kontakt", "Luki", "Dopisz do CV",
            "Notatki", "Źródło", "Klucz"]
 COL = {h: i for i, h in enumerate(HEADERS)}           # 0-based
 STATUSES = ["Do wysłania", "Do rozważenia", "Rozważam", "Wysłane", "Odpowiedź", "Rozmowa", "Zadanie domowe", "Oferta",
@@ -41,15 +41,15 @@ def connect():
 
 
 def mirror_formulas(sep: str) -> tuple[str, str]:
-    """Formuły lustra Ofert: bez wierszy "Do wysłania", "Rezygnacja" i pustych, najpierw aktywne, potem ostatnio wysłane (kolumna "Wysłano CV"); nieaktywne ("Zniknęła") zawsze na dole, nawet po wysłaniu CV.
+    """Formuły lustra Ofert: bez wierszy "Do wysłania", "Rezygnacja" i pustych, najpierw aktywne, potem ostatnio wysłane (kolumna "Wysłano CV"); nieaktywne (Aktywna = "Nie") zawsze na dole, nawet po wysłaniu CV.
     `sep` to separator argumentów: ";" dla arkuszy z polskim (i innym europejskim) locale, "," dla en_US."""
     a1 = f"={{Oferty!A1:{MIRROR_LAST}1}}"          # goła referencja pokazałaby tylko A1; literał tablicowy rozlewa się na MIRROR_COLS kolumn
     st = col_letter(COL["Status"])
     act = col_letter(COL["Aktywna"])
     cv = col_letter(COL["Wysłano CV"])
     conds = '{s}Oferty!{st}2:{st}<>""{s}Oferty!{st}2:{st}<>"Do wysłania"{s}Oferty!{st}2:{st}<>"Rezygnacja"'.format(s=sep, st=st)
-    # klucze sortowania: najpierw nieaktywne na dół ("Zniknęła ..." w kolumnie Aktywna), potem ostatnio wysłane
-    a2 = ('=IFERROR(SORT(FILTER(Oferty!A2:{c}{conds}){s}FILTER(LEFT(Oferty!{act}2:{act}{s}7)="Zniknęła"{conds}){s}TRUE{s}'
+    # klucze sortowania: najpierw nieaktywne na dół (Aktywna = "Nie"), potem ostatnio wysłane
+    a2 = ('=IFERROR(SORT(FILTER(Oferty!A2:{c}{conds}){s}FILTER(Oferty!{act}2:{act}="Nie"{conds}){s}TRUE{s}'
           'FILTER(Oferty!{cv}2:{cv}{conds}){s}FALSE){s}"Jeszcze nic nie wysłane")').format(
         s=sep, c=MIRROR_LAST, act=act, cv=cv, conds=conds)
     return a1, a2
@@ -88,8 +88,9 @@ def header_request(sheet_id: int) -> dict:
 FRESH_DAYS = 30                                   # widok "Świeże": oferty nie starsze niż tyle dni
 CLOSED_STATUSES = ["Przyjęta", "Odrzucone", "Rezygnacja", "Ghosting"]      # proces zakończony
 FULL_TIME = employment.FULL
+INACTIVE = "Nie"                                  # wartość kolumny Aktywna dla ogłoszeń, które zniknęły (aktywne: "Tak")
 CALM_MAX = 4                                      # widok "Spokojne": trudność nie większa niż tyle (0-10)
-FILTER_VIEW_TITLES = ("Do przejrzenia", "Najnowsze", "AI", "Część etatu / zlecenia", "Świeże", "Spokojne")
+FILTER_VIEW_TITLES = ("Do przejrzenia", "Najnowsze", "AI", "Część etatu / zlecenia", "Świeże", "Spokojne", "Nieaktywne")
 
 
 def filter_view_requests(sheet_id: int, existing_titles) -> list[dict]:
@@ -100,11 +101,16 @@ def filter_view_requests(sheet_id: int, existing_titles) -> list[dict]:
         ("Do przejrzenia", {"sortSpecs": [{"dimensionIndex": COL["Match"], "sortOrder": "DESCENDING"}],
                             "criteria": {str(COL["Status"]): {"condition": {"type": "TEXT_EQ",
                                                                             "values": [{"userEnteredValue": "Do wysłania"}]}},
-                                         str(COL["Poziom"]): {"hiddenValues": [level.SENIOR_PLUS]}}}),
-        ("Najnowsze", {"sortSpecs": [{"dimensionIndex": COL["Dodano"], "sortOrder": "DESCENDING"}]}),
+                                         str(COL["Poziom"]): {"hiddenValues": [level.SENIOR_PLUS]},
+                                         str(COL["Aktywna"]): {"hiddenValues": [INACTIVE]}}}),
+        ("Najnowsze", {"sortSpecs": [{"dimensionIndex": COL["Dodano"], "sortOrder": "DESCENDING"}],
+                       "criteria": {str(COL["Aktywna"]): {"hiddenValues": [INACTIVE]}}}),
+        ("Nieaktywne", {"sortSpecs": [{"dimensionIndex": COL["Match"], "sortOrder": "DESCENDING"}],
+                        "criteria": {str(COL["Aktywna"]): {"condition": {"type": "TEXT_EQ", "values": [{"userEnteredValue": INACTIVE}]}}}}),
         ("AI", {"sortSpecs": [{"dimensionIndex": COL["Match"], "sortOrder": "DESCENDING"}],
                 "criteria": {str(COL["AI"]): {"condition": {"type": "NOT_BLANK"}},
-                             str(COL["Status"]): {"hiddenValues": CLOSED_STATUSES}}}),
+                             str(COL["Status"]): {"hiddenValues": CLOSED_STATUSES},
+                             str(COL["Aktywna"]): {"hiddenValues": [INACTIVE]}}}),
         ("Świeże", {"sortSpecs": [{"dimensionIndex": COL["Match"], "sortOrder": "DESCENDING"}],
                     "criteria": {str(COL["Aktywna"]): {"condition": {"type": "TEXT_EQ", "values": [{"userEnteredValue": "Tak"}]}},
                                  str(COL["Wiek (dni)"]): {"condition": {"type": "NUMBER_LESS_THAN_EQ",
@@ -112,7 +118,8 @@ def filter_view_requests(sheet_id: int, existing_titles) -> list[dict]:
                                  str(COL["Status"]): {"condition": {"type": "TEXT_EQ",
                                                                     "values": [{"userEnteredValue": "Do wysłania"}]}}}}),
         ("Spokojne", {"sortSpecs": [{"dimensionIndex": COL["Match"], "sortOrder": "DESCENDING"}],
-                      "criteria": {str(COL["Trudność"]): {"condition": {"type": "NUMBER_LESS_THAN_EQ",
+                      "criteria": {str(COL["Aktywna"]): {"hiddenValues": [INACTIVE]},
+                                   str(COL["Trudność"]): {"condition": {"type": "NUMBER_LESS_THAN_EQ",
                                                                         "values": [{"userEnteredValue": str(CALM_MAX)}]}},
                                    str(COL["Status"]): {"condition": {"type": "TEXT_EQ",
                                                                       "values": [{"userEnteredValue": "Do wysłania"}]}}}}),
@@ -296,8 +303,8 @@ def migration_requests(headers: list[str], sheet_id: int) -> list[dict]:
         reqs.append({"deleteDimension": {"range": dim(i)}})
         h.pop(i)
 
-    for name, anchor in (("Wiek (dni)", "Link"), ("Aktywna", "Wiek (dni)"),       # puste kolumny wstawiane w tej kolejności
-                         ("Poziom", "Match"), ("AI", "Poziom"), ("Trudność", "Poziom")):
+    for name, anchor in (("Wiek (dni)", "Link"), ("Aktywna", "Wiek (dni)"), ("Trudność", "Aktywna"),       # puste kolumny wstawiane w tej kolejności
+                         ("Poziom", "Match"), ("AI", "Poziom")):
         if name not in h and anchor in h:
             i = h.index(anchor) + 1
             reqs.append({"insertDimension": {"range": dim(i), "inheritFromBefore": False}})
@@ -313,6 +320,7 @@ def migration_requests(headers: list[str], sheet_id: int) -> list[dict]:
         if i != p:                                  # destinationIndex liczony na układzie sprzed przeniesienia
             reqs.append({"moveDimension": {"source": dim(i), "destinationIndex": p if i > p else p + 1}})
 
+    place_after("Trudność", "Aktywna")                                   # Trudność stoi przed Statusem
     place_after("Widełki / forma", "AI")
     place_after("Kontakt", "Wymiar" if "Wymiar" in h else "Widełki / forma")
     if "Wymiar" not in h and "Widełki / forma" in h:                   # pusta kolumna zaraz za Widełkami, przed Kontaktem
@@ -727,7 +735,7 @@ def age_formula(row: int, sep: str, seen_tab: str = SEEN_TAB) -> str:
 
 
 def activity_updates(rows: list[list[str]], summaries: dict, today: str) -> list[dict]:
-    """Aktualizacje istniejących wierszy po runie: Aktywna ("Tak" / "Zniknęła RRRR-MM-DD") i tokeny w Notatkach
+    """Aktualizacje istniejących wierszy po runie: Aktywna ("Tak" / "Nie") i tokeny w Notatkach
     ("Odświeżana N×", "Wisi na K portalach"). Dotyka tylko komórek, które się zmieniają."""
     data = []
     for n, r in enumerate(rows, start=2):

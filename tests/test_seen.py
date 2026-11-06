@@ -111,8 +111,8 @@ def test_tokens_and_active_value():
     assert seen.tokens(s) == [] and seen.tokens(seen.Summary("", 2, 3, False)) == ["Odświeżana 2×", "Wisi na 3 portalach"]
     assert seen.active_value(s, "", "2026-10-28") == "Tak"
     gone = seen.Summary("", 0, 1, True)
-    assert seen.active_value(gone, "Tak", "2026-10-28") == "Zniknęła 2026-10-28"
-    assert seen.active_value(gone, "Zniknęła 2026-10-20", "2026-10-28") == "Zniknęła 2026-10-20"
+    assert seen.active_value(gone, "Tak", "2026-10-28") == "Nie"
+    assert seen.active_value(gone, "Zniknęła 2026-10-20", "2026-10-28") == "Nie"      # stary format zamieniany na Nie
 
 
 def test_notes_are_appended_without_overwriting_and_tokens_are_replaced():

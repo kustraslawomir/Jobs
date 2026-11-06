@@ -16,9 +16,9 @@ def test_new_offers_are_sorted_by_match_descending_with_empty_match_last():
 def test_mirror_formulas_use_semicolons_for_polish_locale():
     a1, a2 = sheets.mirror_formulas(sheets.arg_separator("pl_PL"))
     assert a1 == "={Oferty!A1:U1}"                                   # A:U = Dodano ... Notatki (bez Źródło i Klucz)
-    c = ';Oferty!G2:G<>"";Oferty!G2:G<>"Do wysłania";Oferty!G2:G<>"Rezygnacja"'
-    assert a2 == (f'=IFERROR(SORT(FILTER(Oferty!A2:U{c});FILTER(LEFT(Oferty!F2:F;7)="Zniknęła"{c});TRUE;'
-                  f'FILTER(Oferty!H2:H{c});FALSE);"Jeszcze nic nie wysłane")')   # nieaktywne (F) na dół, potem po Wysłano CV (H)
+    c = ';Oferty!H2:H<>"";Oferty!H2:H<>"Do wysłania";Oferty!H2:H<>"Rezygnacja"'
+    assert a2 == (f'=IFERROR(SORT(FILTER(Oferty!A2:U{c});FILTER(Oferty!F2:F="Nie"{c});TRUE;'
+                  f'FILTER(Oferty!I2:I{c});FALSE);"Jeszcze nic nie wysłane")')   # nieaktywne (F) na dół, potem po Wysłano CV (H)
 
 
 def test_mirror_formulas_use_commas_for_en_us():
@@ -29,16 +29,19 @@ def test_filter_views_cover_whole_columns_and_skip_existing_ones():
     C = sheets.COL
     reqs = sheets.filter_view_requests(7, [])
     f = {r["addFilterView"]["filter"]["title"]: r["addFilterView"]["filter"] for r in reqs}
-    titles = {"Do przejrzenia", "Najnowsze", "AI", "Część etatu / zlecenia", "Świeże", "Spokojne"}
+    titles = {"Do przejrzenia", "Najnowsze", "AI", "Część etatu / zlecenia", "Świeże", "Spokojne", "Nieaktywne"}
     assert set(f) == titles == set(sheets.FILTER_VIEW_TITLES)
     todo = f["Do przejrzenia"]
     assert todo["range"] == {"sheetId": 7, "startColumnIndex": 0, "endColumnIndex": 23}       # A:V, bez ograniczenia wierszy
     assert todo["sortSpecs"] == [{"dimensionIndex": C["Match"], "sortOrder": "DESCENDING"}]
     assert todo["criteria"] == {str(C["Status"]): {"condition": {"type": "TEXT_EQ", "values": [{"userEnteredValue": "Do wysłania"}]}},
-                                str(C["Poziom"]): {"hiddenValues": ["Senior+"]}}
+                                str(C["Poziom"]): {"hiddenValues": ["Senior+"]}, str(C["Aktywna"]): {"hiddenValues": ["Nie"]}}
     assert f["Najnowsze"]["sortSpecs"] == [{"dimensionIndex": 0, "sortOrder": "DESCENDING"}]
     assert f["AI"]["criteria"] == {str(C["AI"]): {"condition": {"type": "NOT_BLANK"}},
-                                   str(C["Status"]): {"hiddenValues": ["Przyjęta", "Odrzucone", "Rezygnacja", "Ghosting"]}}
+                                   str(C["Status"]): {"hiddenValues": ["Przyjęta", "Odrzucone", "Rezygnacja", "Ghosting"]},
+                                   str(C["Aktywna"]): {"hiddenValues": ["Nie"]}}
+    assert f["Nieaktywne"]["criteria"] == {str(C["Aktywna"]): {"condition": {"type": "TEXT_EQ", "values": [{"userEnteredValue": "Nie"}]}}}
+    assert f["Najnowsze"]["criteria"] == {str(C["Aktywna"]): {"hiddenValues": ["Nie"]}}
     assert f["AI"]["sortSpecs"] == [{"dimensionIndex": C["Match"], "sortOrder": "DESCENDING"}]
     assert f["Część etatu / zlecenia"]["criteria"] == {str(C["Wymiar"]): {"condition": {"type": "NOT_BLANK"},
                                                                           "hiddenValues": ["Pełny etat"]}}
@@ -58,12 +61,14 @@ def test_blank_sheet_detection():
     assert not sheets.is_blank([["", ""], ["", "x"]])
 
 
-NEW = ["Dodano", "Firma", "Stanowisko", "Link", "Wiek (dni)", "Aktywna", "Status", "Wysłano CV", "Rozmowa", "Następny krok",
-       "Termin", "Match", "Poziom", "Trudność", "AI", "Widełki / forma", "Wymiar", "Kontakt", "Luki", "Dopisz do CV", "Notatki", "Źródło", "Klucz"]
+NEW = ["Dodano", "Firma", "Stanowisko", "Link", "Wiek (dni)", "Aktywna", "Trudność", "Status", "Wysłano CV", "Rozmowa", "Następny krok",
+       "Termin", "Match", "Poziom", "AI", "Widełki / forma", "Wymiar", "Kontakt", "Luki", "Dopisz do CV", "Notatki", "Źródło", "Klucz"]
 NO_LEVEL = [h for h in NEW if h not in ("Wiek (dni)", "Aktywna", "Poziom", "Trudność", "AI", "Wymiar")]   # 17 kolumn, sprzed Poziomu
-NO_AGE = [h for h in NEW if h not in ("Wiek (dni)", "Aktywna")]                             # z Poziomem, AI i Wymiarem
+NO_AGE = [h for h in NEW if h not in ("Wiek (dni)", "Aktywna", "Trudność")]                             # z Poziomem, AI i Wymiarem
 NO_WYMIAR = [h for h in NEW if h != "Wymiar"]
 NO_TRUDNOSC = [h for h in NEW if h != "Trudność"]
+PREV = [h for h in NEW if h != "Trudność"]            # układ z Trudnością zaraz za Poziomem (poprzednia wersja)
+PREV.insert(PREV.index("Poziom") + 1, "Trudność")
 OLD = ["Dodano", "Firma", "Stanowisko", "Link", "Status", "Wysłano CV", "Rozmowa", "Następny krok", "Termin",
        "Alert", "Match", "Luki", "Dopisz do CV", "Kontakt", "Widełki / forma", "Notatki", "Źródło", "Klucz"]
 
@@ -81,7 +86,7 @@ def apply(headers, reqs):
             i, d = m["source"]["startIndex"], m["destinationIndex"]
             col = h.pop(i)
             h.insert(d - 1 if d > i else d, col)
-    names = iter(n for n in ("Wiek (dni)", "Aktywna", "Poziom", "Trudność", "AI", "Wymiar") if n not in h)
+    names = iter(n for n in ("Wiek (dni)", "Aktywna", "Trudność", "Poziom", "AI", "Wymiar") if n not in h)
     return [next(names) if c == "" else c for c in h]
 
 
@@ -93,8 +98,8 @@ def insert(i):
 def test_new_layout_has_23_columns_with_age_after_link_and_key_last():
     C = sheets.COL
     assert sheets.HEADERS == NEW and len(NEW) == 23
-    assert (C["Link"], C["Wiek (dni)"], C["Aktywna"], C["Status"], C["Match"], C["Poziom"], C["Trudność"], C["AI"], C["Widełki / forma"],
-            C["Wymiar"], C["Kontakt"], C["Notatki"], C["Klucz"]) == (3, 4, 5, 6, 11, 12, 13, 14, 15, 16, 17, 20, 22)
+    assert (C["Link"], C["Wiek (dni)"], C["Aktywna"], C["Trudność"], C["Status"], C["Match"], C["Poziom"], C["AI"], C["Widełki / forma"],
+            C["Wymiar"], C["Kontakt"], C["Notatki"], C["Klucz"]) == (3, 4, 5, 6, 7, 12, 13, 14, 15, 16, 17, 20, 22)
     assert sheets.MIRROR_COLS == 21 and sheets.MIRROR_LAST == "U"
     assert "Alert" not in C
 
@@ -102,15 +107,17 @@ def test_new_layout_has_23_columns_with_age_after_link_and_key_last():
 def test_migration_of_17_column_layout_inserts_six_columns_without_touching_data():
     reqs = sheets.migration_requests(NO_LEVEL, 5)
     assert [list(r)[0] for r in reqs] == ["insertDimension"] * 6
-    assert [r["insertDimension"]["range"]["startIndex"] for r in reqs] == [4, 5, 12, 13, 13, 16]
+    assert [r["insertDimension"]["range"]["startIndex"] for r in reqs] == [4, 5, 6, 13, 14, 16]
     assert apply(NO_LEVEL, reqs) == NEW
 
 
 def test_migration_of_the_previous_layout_inserts_only_age_and_active_after_link():
     reqs = sheets.migration_requests(NO_AGE, 5)
-    assert reqs == [insert(4), insert(5)] and apply(NO_AGE, reqs) == NEW
+    assert reqs == [insert(4), insert(5), insert(6)] and apply(NO_AGE, reqs) == NEW
     assert sheets.migration_requests(NO_WYMIAR, 5) == [insert(16)] and apply(NO_WYMIAR, [insert(16)]) == NEW
-    assert sheets.migration_requests(NO_TRUDNOSC, 5) == [insert(13)] and apply(NO_TRUDNOSC, [insert(13)]) == NEW   # Trudność zaraz za Poziomem
+    assert sheets.migration_requests(NO_TRUDNOSC, 5) == [insert(6)] and apply(NO_TRUDNOSC, [insert(6)]) == NEW   # Trudność zaraz za Aktywną
+    moved = sheets.migration_requests(PREV, 5)                                       # poprzedni układ (Trudność za Poziomem): jedno przeniesienie
+    assert [list(r)[0] for r in moved] == ["moveDimension"] and apply(PREV, moved) == NEW
 
 
 def test_migration_of_old_layout_deletes_alert_inserts_columns_and_moves_two():
@@ -229,9 +236,9 @@ def test_format_rules_are_added_in_priority_order_and_only_once():
     assert [r["index"] for r in rules] == [0, 1, 2, 3, 4, 5]    # szarość > Senior+ > fiolet AI > Wiek: >90, >45, <=14
     gray, orange, purple, red, amber, green = (r["rule"] for r in rules)
     assert gray["booleanRule"]["condition"]["values"][0]["userEnteredValue"] == \
-        '=OR($G2="Przyjęta",$G2="Odrzucone",$G2="Rezygnacja",$G2="Ghosting")'
+        '=OR($H2="Przyjęta",$H2="Odrzucone",$H2="Rezygnacja",$H2="Ghosting")'
     pl = sheets.format_requests(7, [], ";")[0]["addConditionalFormatRule"]["rule"]["booleanRule"]["condition"]["values"][0]
-    assert pl["userEnteredValue"] == '=OR($G2="Przyjęta";$G2="Odrzucone";$G2="Rezygnacja";$G2="Ghosting")'   # locale pl
+    assert pl["userEnteredValue"] == '=OR($H2="Przyjęta";$H2="Odrzucone";$H2="Rezygnacja";$H2="Ghosting")'   # locale pl
     assert orange["ranges"] == [{"sheetId": 7, "startRowIndex": 1, "startColumnIndex": C["Poziom"], "endColumnIndex": C["Poziom"] + 1}]
     assert orange["booleanRule"]["condition"] == {"type": "TEXT_EQ", "values": [{"userEnteredValue": "Senior+"}]}
     assert purple["ranges"] == [{"sheetId": 7, "startRowIndex": 1, "startColumnIndex": 0, "endColumnIndex": 23}]
@@ -245,7 +252,7 @@ def test_format_rules_are_added_in_priority_order_and_only_once():
 
 def test_existing_gray_rule_is_kept_on_top_and_other_rules_go_below_it():
     mine = {"ranges": [], "booleanRule": {"condition": {"type": "CUSTOM_FORMULA",
-                                                        "values": [{"userEnteredValue": '=$G2="Odrzucone"'}]}, "format": {}}}
+                                                        "values": [{"userEnteredValue": '=$H2="Odrzucone"'}]}, "format": {}}}
     reqs = sheets.format_requests(7, [mine])
     assert [r["addConditionalFormatRule"]["index"] for r in reqs] == [1, 2, 3, 4, 5]     # po istniejącej regule, nie przed nią
 
@@ -283,7 +290,7 @@ def test_activity_updates_touch_only_changed_cells_and_keep_the_first_disappeara
             "d": Summary("", 2, 1, False)}
     data = {d["range"]: d["values"][0][0] for d in sheets.activity_updates(rows, sums, "2026-10-28")}
     L, N = sheets.col_letter(sheets.COL["Aktywna"]), sheets.col_letter(sheets.COL["Notatki"])
-    assert data == {f"{N}2": "Poziom: x. Odświeżana 3×. Wisi na 3 portalach", f"{L}3": "Zniknęła 2026-10-28", f"{L}5": "Tak"}
+    assert data == {f"{N}2": "Poziom: x. Odświeżana 3×. Wisi na 3 portalach", f"{L}3": "Nie", f"{L}4": "Nie", f"{L}5": "Tak"}
 
 
 def test_difficulty_backfill_fills_only_blank_cells_and_works_without_a_description():
