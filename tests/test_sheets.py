@@ -16,9 +16,11 @@ def test_new_offers_are_sorted_by_match_descending_with_empty_match_last():
 def test_mirror_formulas_use_semicolons_for_polish_locale():
     a1, a2 = sheets.mirror_formulas(sheets.arg_separator("pl_PL"))
     assert a1 == "={Oferty!A1:V1}"                                   # A:V = Dodano ... Notatki (bez Źródło i Klucz)
-    c = ';Oferty!H2:H<>"";Oferty!H2:H<>"Do wysłania";Oferty!H2:H<>"Rezygnacja"'
-    assert a2 == (f'=IFERROR(SORT(FILTER(Oferty!A2:V{c});FILTER(Oferty!F2:F="Nie"{c});TRUE;'
-                  f'FILTER(Oferty!J2:J{c});FALSE);"Jeszcze nic nie wysłane")')   # nieaktywne (F) na dół, potem po Wysłano CV (J)
+    c = ';Oferty!H2:H<>"";Oferty!H2:H<>"Do wysłania"'
+    rank = ('ARRAYFORMULA(IF((Oferty!H2:H="Odrzucone")+(Oferty!H2:H="Rezygnacja")+(Oferty!H2:H="Ghosting");3;'
+            'IF(Oferty!F2:F="Nie";2;IF((Oferty!H2:H="Do rozważenia")+(Oferty!H2:H="Rozważam");1;0))))')
+    assert a2 == (f'=IFERROR(SORT(FILTER(Oferty!A2:V{c});FILTER({rank}{c});TRUE;'
+                  f'FILTER(Oferty!J2:J{c});FALSE);"Jeszcze nic nie wysłane")')   # grupa 0-3, potem po Wysłano CV (J)
 
 
 def test_mirror_formulas_use_commas_for_en_us():
@@ -197,6 +199,22 @@ def test_delete_backup_refuses_anything_but_backup_tabs():
     assert deleted == ["Oferty_backup_2026-10-27"]
 
 
+def test_delete_backup_all_removes_only_backup_tabs():
+    deleted = []
+
+    class SH:
+        def worksheets(self):
+            return [SimpleNamespace(title=t) for t in ("Oferty", "Oferty_backup_1", "Aplikowane", "Oferty_backup_2_2")]
+
+        def worksheet(self, name):
+            return name
+
+        def del_worksheet(self, ws):
+            deleted.append(ws)
+    sheets.delete_backup(SH(), "all")
+    assert deleted == ["Oferty_backup_1", "Oferty_backup_2_2"]
+
+
 CFG_LEVEL = __import__("yaml").safe_load(open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                                                            "config.yaml"), encoding="utf-8"))["level"]
 
@@ -231,32 +249,32 @@ def test_ai_backfill_fills_only_blank_cells_with_a_description_and_a_hit():
     assert sheets.ai_backfill(rows, desc, CFG_AI) == [(2, "produkt + workflow (llm, agentic)")]
 
 
-def test_format_rules_are_added_in_priority_order_and_only_once():
-    C = sheets.COL
+def test_format_rules_are_status_based_without_purple_and_rebuilt_only_when_different():
     reqs = sheets.format_requests(7, [])
     rules = [r["addConditionalFormatRule"] for r in reqs]
-    assert [r["index"] for r in rules] == [0, 1, 2, 3, 4, 5]    # szarość > Senior+ > fiolet AI > Wiek: >90, >45, <=14
-    gray, orange, purple, red, amber, green = (r["rule"] for r in rules)
-    assert gray["booleanRule"]["condition"]["values"][0]["userEnteredValue"] == \
-        '=OR($H2="Przyjęta",$H2="Odrzucone",$H2="Rezygnacja",$H2="Ghosting")'
-    pl = sheets.format_requests(7, [], ";")[0]["addConditionalFormatRule"]["rule"]["booleanRule"]["condition"]["values"][0]
-    assert pl["userEnteredValue"] == '=OR($H2="Przyjęta";$H2="Odrzucone";$H2="Rezygnacja";$H2="Ghosting")'   # locale pl
-    assert orange["ranges"] == [{"sheetId": 7, "startRowIndex": 1, "startColumnIndex": C["Poziom"], "endColumnIndex": C["Poziom"] + 1}]
-    assert orange["booleanRule"]["condition"] == {"type": "TEXT_EQ", "values": [{"userEnteredValue": "Senior+"}]}
-    assert purple["ranges"] == [{"sheetId": 7, "startRowIndex": 1, "startColumnIndex": 0, "endColumnIndex": 24}]
-    assert purple["booleanRule"]["condition"] == {"type": "CUSTOM_FORMULA", "values": [{"userEnteredValue": '=$P2<>""'}]}
-    age = [{"sheetId": 7, "startRowIndex": 1, "startColumnIndex": C["Wiek (dni)"], "endColumnIndex": C["Wiek (dni)"] + 1}]
-    assert [(r["ranges"], r["booleanRule"]["condition"]["type"], r["booleanRule"]["condition"]["values"][0]["userEnteredValue"])
-            for r in (red, amber, green)] == [(age, "NUMBER_GREATER", "90"), (age, "NUMBER_GREATER", "45"), (age, "NUMBER_LESS_THAN_EQ", "14")]
-    assert red["booleanRule"]["format"] != amber["booleanRule"]["format"]
-    assert sheets.format_requests(7, [x["addConditionalFormatRule"]["rule"] for x in reqs]) == []
+    assert [r["index"] for r in rules] == [0, 1, 2, 3]            # odrzucone > nieaktywne > w procesie > do rozważenia
+    rejected, inactive, sent, consider = (r["rule"] for r in rules)
+    f = lambda r: r["booleanRule"]["condition"]["values"][0]["userEnteredValue"]
+    assert f(rejected) == '=OR($H2="Odrzucone",$H2="Rezygnacja",$H2="Ghosting")'
+    assert f(inactive) == '=$F2="Nie"'
+    assert f(sent) == '=OR($H2="Wysłane",$H2="Odpowiedź",$H2="Rozmowa",$H2="Zadanie domowe",$H2="Oferta",$H2="Przyjęta")'
+    assert f(consider) == '=OR($H2="Do rozważenia",$H2="Rozważam")'
+    assert f(sheets.format_requests(7, [], ";")[0]["addConditionalFormatRule"]["rule"]).count(";") == 2        # locale pl
+    assert rejected["ranges"] == [{"sheetId": 7, "startRowIndex": 1, "startColumnIndex": 0, "endColumnIndex": 24}]
+    assert sheets.format_requests(7, [], width=sheets.MIRROR_COLS)[-1]["addConditionalFormatRule"]["rule"]["ranges"][0]["endColumnIndex"] == 22
+    assert rejected["booleanRule"]["format"]["textFormat"]["strikethrough"] is True
+    for r in (rejected, inactive, sent, consider):             # żadnych fioletów: niebieski nigdy nie przewyższa zieleni
+        bg = r["booleanRule"]["format"]["backgroundColor"]
+        assert not (bg["blue"] > bg["green"]), bg
+    assert sheets.format_requests(7, [x["addConditionalFormatRule"]["rule"] for x in reqs]) == []         # idempotentne
 
 
-def test_existing_gray_rule_is_kept_on_top_and_other_rules_go_below_it():
-    mine = {"ranges": [], "booleanRule": {"condition": {"type": "CUSTOM_FORMULA",
-                                                        "values": [{"userEnteredValue": '=$H2="Odrzucone"'}]}, "format": {}}}
-    reqs = sheets.format_requests(7, [mine])
-    assert [r["addConditionalFormatRule"]["index"] for r in reqs] == [1, 2, 3, 4, 5]     # po istniejącej regule, nie przed nią
+def test_old_rules_purple_senior_plus_and_age_colors_are_all_dropped_before_the_new_set():
+    old = [{"ranges": [], "booleanRule": {"condition": {"type": "CUSTOM_FORMULA", "values": [{"userEnteredValue": '=$P2<>""'}]}}},
+           {"ranges": [], "booleanRule": {"condition": {"type": "NUMBER_GREATER", "values": [{"userEnteredValue": "90"}]}}}]
+    reqs = sheets.format_requests(7, old)
+    assert [list(r)[0] for r in reqs] == ["deleteConditionalFormatRule"] * 2 + ["addConditionalFormatRule"] * 4
+    assert [r["deleteConditionalFormatRule"]["index"] for r in reqs[:2]] == [1, 0]                       # od końca
 
 
 def test_workload_backfill_fills_blank_cells_only_and_leaves_notes_alone():
@@ -312,4 +330,4 @@ def test_difficulty_backfill_fills_only_blank_cells_and_works_without_a_descript
 def test_consideration_statuses_are_selectable_and_show_up_in_the_mirror():
     assert sheets.STATUSES[:3] == ["Do wysłania", "Do rozważenia", "Rozważam"]
     _, a2 = sheets.mirror_formulas(";")
-    assert '<>"Do wysłania"' in a2 and "Do rozważenia" not in a2 and "Rozważam" not in a2      # lustro wycina tylko Do wysłania i Rezygnację
+    assert '<>"Do wysłania"' in a2 and '<>"Rezygnacja"' not in a2 and "Rozważam" in a2      # lustro wycina tylko Do wysłania; odrzucone leżą na dole

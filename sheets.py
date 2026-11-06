@@ -55,17 +55,22 @@ def connect():
 
 
 def mirror_formulas(sep: str) -> tuple[str, str]:
-    """Formuły lustra Ofert: bez wierszy "Do wysłania", "Rezygnacja" i pustych, najpierw aktywne, potem ostatnio wysłane (kolumna "Wysłano CV"); nieaktywne (Aktywna = "Nie") zawsze na dole, nawet po wysłaniu CV.
+    """Formuły lustra Ofert (sortuje się samo po każdej zmianie Statusu / Aktywnej). Bez wierszy "Do wysłania" i pustych. Kolejność:
+    0) aktywne po wysłaniu CV / w procesie (Wysłane ... Przyjęta), 1) Do rozważenia / Rozważam, 2) nieaktywne (Aktywna = "Nie"),
+    3) odrzucone (Odrzucone, Rezygnacja, Ghosting) na samym dole; w obrębie grupy ostatnio wysłane CV (kolumna "Wysłano CV") na górze.
     `sep` to separator argumentów: ";" dla arkuszy z polskim (i innym europejskim) locale, "," dla en_US."""
     a1 = f"={{Oferty!A1:{MIRROR_LAST}1}}"          # goła referencja pokazałaby tylko A1; literał tablicowy rozlewa się na MIRROR_COLS kolumn
     st = col_letter(COL["Status"])
     act = col_letter(COL["Aktywna"])
     cv = col_letter(COL["Wysłano CV"])
-    conds = '{s}Oferty!{st}2:{st}<>""{s}Oferty!{st}2:{st}<>"Do wysłania"{s}Oferty!{st}2:{st}<>"Rezygnacja"'.format(s=sep, st=st)
-    # klucze sortowania: najpierw nieaktywne na dół (Aktywna = "Nie"), potem ostatnio wysłane
-    a2 = ('=IFERROR(SORT(FILTER(Oferty!A2:{c}{conds}){s}FILTER(Oferty!{act}2:{act}="Nie"{conds}){s}TRUE{s}'
+    conds = '{s}Oferty!{st}2:{st}<>""{s}Oferty!{st}2:{st}<>"Do wysłania"'.format(s=sep, st=st)
+    s_ = f"Oferty!{st}2:{st}"
+    rejected = "+".join(f'({s_}="{x}")' for x in REJECTED)
+    consider = "+".join(f'({s_}="{x}")' for x in CONSIDER)
+    rank = f'ARRAYFORMULA(IF({rejected}{sep}3{sep}IF(Oferty!{act}2:{act}="{INACTIVE}"{sep}2{sep}IF({consider}{sep}1{sep}0))))'
+    a2 = ('=IFERROR(SORT(FILTER(Oferty!A2:{c}{conds}){s}FILTER({rank}{conds}){s}TRUE{s}'
           'FILTER(Oferty!{cv}2:{cv}{conds}){s}FALSE){s}"Jeszcze nic nie wysłane")').format(
-        s=sep, c=MIRROR_LAST, act=act, cv=cv, conds=conds)
+        s=sep, c=MIRROR_LAST, rank=rank, cv=cv, conds=conds)
     return a1, a2
 
 
@@ -101,6 +106,9 @@ def header_request(sheet_id: int) -> dict:
 
 FRESH_DAYS = 30                                   # widok "Świeże": oferty nie starsze niż tyle dni
 CLOSED_STATUSES = ["Przyjęta", "Odrzucone", "Rezygnacja", "Ghosting"]      # proces zakończony
+REJECTED = ["Odrzucone", "Rezygnacja", "Ghosting"]                          # odpadły: szare, na samym dole lustra
+CONSIDER = ["Do rozważenia", "Rozważam"]                                     # jeszcze nie wysłane, ale warte uwagi
+IN_PROCESS = ["Wysłane", "Odpowiedź", "Rozmowa", "Zadanie domowe", "Oferta", "Przyjęta"]   # CV poszło / proces trwa
 FULL_TIME = employment.FULL
 INACTIVE = "Nie"                                  # wartość kolumny Aktywna dla ogłoszeń, które zniknęły (aktywne: "Tak")
 CALM_MAX = 4                                      # widok "Spokojne": trudność nie większa niż tyle (0-10)
@@ -221,77 +229,49 @@ def ensure_filter_views(sh, offers_ws):
     print("Widoki filtrów w Ofertach:", [v["title"] for v in sheet.get("filterViews", [])])
 
 
-def _rule_mentions(rules: list[dict], *needles: str) -> bool:
-    return any(json.dumps(n, ensure_ascii=False)[1:-1] in json.dumps(r, ensure_ascii=False) for r in rules for n in needles)
+def _rgb(hexcolor: str) -> dict:
+    return {k: int(hexcolor[i:i + 2], 16) / 255 for k, i in (("red", 1), ("green", 3), ("blue", 5))}
 
 
-def format_requests(sheet_id: int, existing_rules: list[dict], sep: str = ",") -> list[dict]:
-    """Formatowanie warunkowe Ofert, dokładane tylko gdy czegoś brakuje (idempotentne). Kolejność reguł = priorytet:
-    1) szarość zamkniętych statusów (jeśli w arkuszu nie ma takiej reguły, dodajemy ją na początku),
-    2) Poziom "Senior+" na pomarańczowo,
-    3) cały wiersz z niepustą kolumną AI na jasnofioletowo (na końcu, więc szarość i pomarańcz mają pierwszeństwo).
+def desired_rules(sheet_id: int, width: int, sep: str = ",") -> list[dict]:
+    """Formatowanie wierszy według Statusu / Aktywnej, od najważniejszej reguły (pierwsza pasująca wygrywa):
+    odrzucone (ciemnoszare, przekreślone) > nieaktywne (jasnoszare) > wysłane / w procesie (jasnozielone) > do rozważenia (jasnożółte).
     Formuły są w składni locale arkusza, więc `sep` to separator argumentów jak w mirror_formulas."""
-    n = len(existing_rules)
-    reqs = []
+    st, act = col_letter(COL["Status"]), col_letter(COL["Aktywna"])
 
-    def add(rule, at_start=False):
-        nonlocal n
-        reqs.append({"addConditionalFormatRule": {"index": 0 if at_start else n, "rule": rule}})
-        n += 1
-
-    width = len(HEADERS)
-    if not _rule_mentions(existing_rules, "Odrzucone", "Rezygnacja", "Ghosting"):
-        cond = sep.join(f'${col_letter(COL["Status"])}2="{s}"' for s in CLOSED_STATUSES)
-        add({"ranges": [{"sheetId": sheet_id, "startRowIndex": 1, "startColumnIndex": 0, "endColumnIndex": width}],
-             "booleanRule": {"condition": {"type": "CUSTOM_FORMULA", "values": [{"userEnteredValue": f"=OR({cond})"}]},
-                             "format": {"backgroundColor": {"red": 0.85, "green": 0.85, "blue": 0.85},
-                                        "textFormat": {"foregroundColor": {"red": 0.5, "green": 0.5, "blue": 0.5}}}}}, at_start=True)
-    col = COL["Poziom"]
-    has_level = any(
-        (r.get("booleanRule") or {}).get("condition", {}).get("type") == "TEXT_EQ"
-        and [v.get("userEnteredValue") for v in r["booleanRule"]["condition"].get("values", [])] == [level.SENIOR_PLUS]
-        and any(x.get("startColumnIndex") == col for x in r.get("ranges", []))
-        for r in existing_rules)
-    if not has_level:
-        add({"ranges": [{"sheetId": sheet_id, "startRowIndex": 1, "startColumnIndex": col, "endColumnIndex": col + 1}],
-             "booleanRule": {"condition": {"type": "TEXT_EQ", "values": [{"userEnteredValue": level.SENIOR_PLUS}]},
-                             "format": {"backgroundColor": {"red": 1.0, "green": 0.76, "blue": 0.4}}}})
-    ai_formula = f'=${col_letter(COL["AI"])}2<>""'
-    if not _rule_mentions(existing_rules, ai_formula):
-        add({"ranges": [{"sheetId": sheet_id, "startRowIndex": 1, "startColumnIndex": 0, "endColumnIndex": width}],
-             "booleanRule": {"condition": {"type": "CUSTOM_FORMULA", "values": [{"userEnteredValue": ai_formula}]},
-                             "format": {"backgroundColor": {"red": 0.91, "green": 0.87, "blue": 0.98}}}})
-    age = COL["Wiek (dni)"]
-    for ctype, value, color in (("NUMBER_GREATER", 90, {"red": 0.96, "green": 0.62, "blue": 0.6}),         # > 90 dni: czerwony
-                                ("NUMBER_GREATER", 45, {"red": 1.0, "green": 0.76, "blue": 0.4}),         # > 45 dni: pomarańczowy
-                                ("NUMBER_LESS_THAN_EQ", 14, {"red": 0.72, "green": 0.88, "blue": 0.72})):  # <= 14 dni: zielony
-        if not _has_condition(existing_rules, ctype, str(value), age):
-            add({"ranges": [{"sheetId": sheet_id, "startRowIndex": 1, "startColumnIndex": age, "endColumnIndex": age + 1}],
-                 "booleanRule": {"condition": {"type": ctype, "values": [{"userEnteredValue": str(value)}]},
-                                 "format": {"backgroundColor": color}}})
-    return reqs
+    def any_of(values):
+        return "=OR(" + sep.join(f'${st}2="{v}"' for v in values) + ")"
+    rows = [
+        (any_of(REJECTED), "#D0D0D0", {"foregroundColor": _rgb("#666666"), "strikethrough": True}),
+        (f'=${act}2="{INACTIVE}"', "#EFEFEF", {"foregroundColor": _rgb("#8A8A8A")}),
+        (any_of(IN_PROCESS), "#E2F0D9", {}),
+        (any_of(CONSIDER), "#FFF4CC", {}),
+    ]
+    return [{"ranges": [{"sheetId": sheet_id, "startRowIndex": 1, "startColumnIndex": 0, "endColumnIndex": width}],
+             "booleanRule": {"condition": {"type": "CUSTOM_FORMULA", "values": [{"userEnteredValue": formula}]},
+                             "format": {"backgroundColor": _rgb(color), **({"textFormat": text} if text else {})}}}
+            for formula, color, text in rows]
 
 
-def _has_condition(rules: list[dict], ctype: str, value: str, col: int) -> bool:
-    for r in rules:
-        cond = (r.get("booleanRule") or {}).get("condition") or {}
-        if (cond.get("type") == ctype and [v.get("userEnteredValue") for v in cond.get("values", [])] == [value]
-                and any(x.get("startColumnIndex") == col for x in r.get("ranges", []))):
-            return True
-    return False
+def format_requests(sheet_id: int, existing_rules: list[dict], sep: str = ",", width: int | None = None) -> list[dict]:
+    """Zastępuje WSZYSTKIE reguły formatowania warunkowego arkusza zestawem z desired_rules (stare fiolety, Senior+ i kolory wieku znikają).
+    Gdy istniejące reguły już zawierają dokładnie te formuły, nic nie robi (idempotentne)."""
+    want = desired_rules(sheet_id, width or len(HEADERS), sep)
+    formulas = [r["booleanRule"]["condition"]["values"][0]["userEnteredValue"] for r in want]
+    have = [[v.get("userEnteredValue") for v in (r.get("booleanRule") or {}).get("condition", {}).get("values", [])] for r in existing_rules]
+    if have == [[f] for f in formulas]:
+        return []
+    drop = [{"deleteConditionalFormatRule": {"sheetId": sheet_id, "index": i}} for i in range(len(existing_rules) - 1, -1, -1)]
+    return drop + [{"addConditionalFormatRule": {"index": i, "rule": r}} for i, r in enumerate(want)]
 
 
-def ensure_formats(sh, offers_ws, sep: str):
+def ensure_formats(sh, ws, sep: str, width: int | None = None):
     meta = sh.fetch_sheet_metadata(params={"fields": "sheets(properties(sheetId),conditionalFormats)"})
-    sheet = next(s for s in meta["sheets"] if s["properties"]["sheetId"] == offers_ws.id)
-    rules = sheet.get("conditionalFormats", [])
-    print("Formatowanie warunkowe Ofert, istniejące reguły:",
-          [(r.get("booleanRule", {}).get("condition", {}).get("type") or "gradient",
-            [v.get("userEnteredValue") for v in r.get("booleanRule", {}).get("condition", {}).get("values", [])]) for r in rules])
-    reqs = format_requests(offers_ws.id, rules, sep)
+    sheet = next(s for s in meta["sheets"] if s["properties"]["sheetId"] == ws.id)
+    reqs = format_requests(ws.id, sheet.get("conditionalFormats", []), sep, width)
     if reqs:
         sh.batch_update({"requests": reqs})
-    print(f"Formatowanie warunkowe Ofert: dodano {len(reqs)} reguł.")
+    print(f"Formatowanie warunkowe {ws.title}: {'przebudowane' if reqs else 'bez zmian'} ({len(reqs)} operacji).")
 
 
 def check_layout(ws):
@@ -558,12 +538,16 @@ BACKUP_PREFIX = "Oferty_backup_"
 
 
 def delete_backup(sh, name: str):
-    """Usuwa kopię zapasową zrobioną przez migrate. Dotyka wyłącznie zakładek o nazwie Oferty_backup_*."""
-    if not name.startswith(BACKUP_PREFIX):
+    """Usuwa kopię zapasową zrobioną przez migrate ("all" = wszystkie). Dotyka wyłącznie zakładek o nazwie Oferty_backup_*."""
+    if name != "all" and not name.startswith(BACKUP_PREFIX):
         raise ValueError(f"Odmowa: usuwam tylko zakładki {BACKUP_PREFIX}*, a podano {name!r}")
-    ws = sh.worksheet(name)
-    sh.del_worksheet(ws)
-    print(f"Usunięto zakładkę {name!r}. Zakładki teraz:", [w.title for w in sh.worksheets()])
+    names = [w.title for w in sh.worksheets() if w.title.startswith(BACKUP_PREFIX)] if name == "all" else [name]
+    for n in names:
+        sh.del_worksheet(sh.worksheet(n))
+        print(f"Usunięto zakładkę {n!r}.")
+    if not names:
+        print("Brak kopii zapasowych do usunięcia.")
+    print("Zakładki teraz:", [w.title for w in sh.worksheets()])
 
 
 def init(sh, cfg, skills_csv="skills.csv"):
@@ -605,6 +589,7 @@ def init(sh, cfg, skills_csv="skills.csv"):
     ensure_seen_tab(sh, cfg)
     ensure_filter_views(sh, ws)
     ensure_mirror_tab(sh, ws, locale)
+    ensure_formats(sh, sh.worksheet(MIRROR_TAB), arg_separator(locale), MIRROR_COLS)
 
     if s["tab_skills"] not in titles:
         sk = sh.add_worksheet(s["tab_skills"], 300, len(SKILL_HEADERS))
