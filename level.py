@@ -103,11 +103,12 @@ def bump_signals(text: str, cfg: dict) -> list[str]:
 _NEGATION_BEFORE = re.compile(r"(?:^| )(?:no|not|without|zero|nie|bez|brak)(?: \w+){0,2} $")
 
 
-def dealbreakers(text: str, cfg: dict, labels) -> list[str]:
-    """Etykiety z `labels` (wpisy level.bump_signals), których regex pasuje w tekście poza zaprzeczeniem ("no live coding", "bez live codingu")."""
+def negation_safe_signals(text: str, cfg: dict, labels=None) -> list[str]:
+    """Etykiety z `labels` (domyślnie wszystkie wpisy level.bump_signals), których regex pasuje w tekście poza zaprzeczeniem
+    ("no live coding", "bez live codingu")."""
     t = f" {normalize(text)} "
     out = []
-    for label in labels:
+    for label in (labels if labels is not None else cfg["bump_signals"]):
         for pattern in cfg["bump_signals"].get(label, []):
             if any(not _NEGATION_BEFORE.search(t[max(0, m.start() - 24):m.start()]) for m in re.finditer(pattern, t)):
                 out.append(label)

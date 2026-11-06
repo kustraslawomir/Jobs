@@ -53,7 +53,7 @@ class Offer:
     ai: str = ""                   # "produkt (llm)" / "workflow (...)" / "" (ai_flag.py)
     published: str = ""            # data publikacji z portalu RRRR-MM-DD (najwcześniejsza, jaką portal podaje)
     renewed: str = ""              # najnowsza data z portalu (odświeżenie / bump); puste = brak
-    status: str = ""               # puste = "Do wysłania"; "Rezygnacja" dla ofert z dyskwalifikatorem rozmowy (config dealbreakers)
+    difficulty: int | None = None  # 0-10 (difficulty.py): poziom + sygnały trudnej rozmowy / roli / presji
     workload: str = ""             # "Pełny etat" | "Część etatu (1/2)" | "Zlecenie / kontrakt" | "" (employment.py)
 
     @property

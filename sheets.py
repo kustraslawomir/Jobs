@@ -7,11 +7,12 @@ import gspread
 
 import ai_flag
 import employment
+import difficulty
 import level
 import seen
 
 HEADERS = ["Dodano", "Firma", "Stanowisko", "Link", "Wiek (dni)", "Aktywna", "Status", "Wysłano CV", "Rozmowa",
-           "Następny krok", "Termin", "Match", "Poziom", "AI", "Widełki / forma", "Wymiar", "Kontakt", "Luki", "Dopisz do CV",
+           "Następny krok", "Termin", "Match", "Poziom", "Trudność", "AI", "Widełki / forma", "Wymiar", "Kontakt", "Luki", "Dopisz do CV",
            "Notatki", "Źródło", "Klucz"]
 COL = {h: i for i, h in enumerate(HEADERS)}           # 0-based
 STATUSES = ["Do wysłania", "Wysłane", "Odpowiedź", "Rozmowa", "Zadanie domowe", "Oferta",
@@ -87,7 +88,8 @@ def header_request(sheet_id: int) -> dict:
 FRESH_DAYS = 30                                   # widok "Świeże": oferty nie starsze niż tyle dni
 CLOSED_STATUSES = ["Przyjęta", "Odrzucone", "Rezygnacja", "Ghosting"]      # proces zakończony
 FULL_TIME = employment.FULL
-FILTER_VIEW_TITLES = ("Do przejrzenia", "Najnowsze", "AI", "Część etatu / zlecenia", "Świeże")
+CALM_MAX = 4                                      # widok "Spokojne": trudność nie większa niż tyle (0-10)
+FILTER_VIEW_TITLES = ("Do przejrzenia", "Najnowsze", "AI", "Część etatu / zlecenia", "Świeże", "Spokojne")
 
 
 def filter_view_requests(sheet_id: int, existing_titles) -> list[dict]:
@@ -109,6 +111,11 @@ def filter_view_requests(sheet_id: int, existing_titles) -> list[dict]:
                                                                         "values": [{"userEnteredValue": str(FRESH_DAYS)}]}},
                                  str(COL["Status"]): {"condition": {"type": "TEXT_EQ",
                                                                     "values": [{"userEnteredValue": "Do wysłania"}]}}}}),
+        ("Spokojne", {"sortSpecs": [{"dimensionIndex": COL["Match"], "sortOrder": "DESCENDING"}],
+                      "criteria": {str(COL["Trudność"]): {"condition": {"type": "NUMBER_LESS_THAN_EQ",
+                                                                        "values": [{"userEnteredValue": str(CALM_MAX)}]}},
+                                   str(COL["Status"]): {"condition": {"type": "TEXT_EQ",
+                                                                      "values": [{"userEnteredValue": "Do wysłania"}]}}}}),
         ("Część etatu / zlecenia", {"sortSpecs": [{"dimensionIndex": COL["Match"], "sortOrder": "DESCENDING"}],
                                     "criteria": {str(COL["Wymiar"]): {"condition": {"type": "NOT_BLANK"},
                                                                       "hiddenValues": [FULL_TIME]}}}),
@@ -290,7 +297,7 @@ def migration_requests(headers: list[str], sheet_id: int) -> list[dict]:
         h.pop(i)
 
     for name, anchor in (("Wiek (dni)", "Link"), ("Aktywna", "Wiek (dni)"),       # puste kolumny wstawiane w tej kolejności
-                         ("Poziom", "Match"), ("AI", "Poziom")):
+                         ("Poziom", "Match"), ("AI", "Poziom"), ("Trudność", "Poziom")):
         if name not in h and anchor in h:
             i = h.index(anchor) + 1
             reqs.append({"insertDimension": {"range": dim(i), "inheritFromBefore": False}})
@@ -345,7 +352,7 @@ def migrate(sh, cfg, today: str | None = None):
         sh.batch_update({"requests": stale + drop + reqs})   # widoki mają stare indeksy kolumn: wracają z init()
         row1 = ws.row_values(1)                            # insertDimension wstawia puste kolumny: nagłówki dopisujemy od razu
         for i, name in enumerate(HEADERS):
-            if name in ("Wiek (dni)", "Aktywna", "Poziom", "AI", "Wymiar") and name not in row1:
+            if name in ("Wiek (dni)", "Aktywna", "Poziom", "Trudność", "AI", "Wymiar") and name not in row1:
                 ws.update_cell(1, i + 1, name)
         print(f"Migracja: {len(reqs)} operacji na kolumnach, usunięto {len(stale)} widoków filtrów.")
     init(sh, cfg)                                       # idempotentne: walidacje, formaty, widoki, lustro (także po przerwanej migracji)
@@ -380,6 +387,21 @@ def level_backfill(rows: list[list[str]], descriptions: dict[str, str], cfg_leve
         old = r[COL["Notatki"]].strip()
         note = f"{old}. {a.note}" if old and a.note else (a.note or None)
         out.append((n, a.level, note))
+    return out
+
+
+def difficulty_backfill(rows: list[list[str]], descriptions: dict[str, str], cfg: dict,
+                        levels: dict[int, str] | None = None) -> list[tuple[int, int, str]]:
+    """Dla wierszy z pustą Trudnością: (numer wiersza, trudność 0-10, tekst do Notatek). Poziom bierzemy z komórki Poziom
+    (albo z `levels` = świeżo uzupełnione poziomy), opis z _opisy; bez opisu liczymy z tytułu i poziomu. Wypełnionych komórek nie ruszamy."""
+    out = []
+    for n, r in enumerate(rows, start=2):
+        r = r + [""] * len(HEADERS)
+        if r[COL["Trudność"]].strip() or not (r[COL["Firma"]].strip() or r[COL["Stanowisko"]].strip()):
+            continue
+        lvl = (levels or {}).get(n) or r[COL["Poziom"]].strip()
+        value, why = difficulty.score(r[COL["Stanowisko"]], descriptions.get(r[COL["Klucz"]], ""), lvl, cfg["level"], cfg["difficulty"])
+        out.append((n, value, f"Trudność {value}/10: {', '.join(why)}" if why else f"Trudność {value}/10"))
     return out
 
 
@@ -434,11 +456,18 @@ def backfill_columns(sh, cfg, ws, locale: str = "en_US"):
     descriptions = read_descriptions(sh, cfg)
     levels = level_backfill(rows, descriptions, cfg["level"])
     ais = ai_backfill(rows, descriptions, cfg["ai"])
+    notes = {n: note for n, _, note in levels if note is not None}              # jedna zapis Notatek na wiersz
+    diffs = difficulty_backfill(rows, descriptions, cfg, {n: lvl for n, lvl, _ in levels})
+    for n, _, text in diffs:
+        old = notes.get(n, rows[n - 2][COL["Notatki"]].strip() if len(rows[n - 2]) > COL["Notatki"] else "")
+        notes[n] = f"{old}. {text}" if old else text
     data = []
-    for n, lvl, note in levels:
+    for n, lvl, _ in levels:
         data.append({"range": f"{col_letter(COL['Poziom'])}{n}", "values": [[lvl]]})
-        if note is not None:
-            data.append({"range": f"{col_letter(COL['Notatki'])}{n}", "values": [[note]]})
+    for n, value, _ in diffs:
+        data.append({"range": f"{col_letter(COL['Trudność'])}{n}", "values": [[value]]})
+    for n, note in notes.items():
+        data.append({"range": f"{col_letter(COL['Notatki'])}{n}", "values": [[note]]})
     for n, value in ais:
         data.append({"range": f"{col_letter(COL['AI'])}{n}", "values": [[value]]})
     workloads = workload_backfill(rows, descriptions)
@@ -458,6 +487,7 @@ def backfill_columns(sh, cfg, ws, locale: str = "en_US"):
     print("Wiek / Aktywna: uzupełniono", len(ages), "wierszy.")
     from collections import Counter
     print("Poziom: uzupełniono", len(levels), "wierszy:", dict(Counter(u[1] for u in levels)))
+    print("Trudność: uzupełniono", len(diffs), "wierszy, rozkład:", dict(sorted(Counter(v for _, v, _ in diffs).items())))
     print("AI: uzupełniono", len(ais), "wierszy:", dict(Counter(v.split(" (")[0] for _, v in ais)))
     print("Wymiar: uzupełniono", len(workloads), "wierszy:", dict(Counter(v.split(" (")[0] for _, v in workloads)))
 
@@ -756,9 +786,10 @@ def offer_row(o, today: str, row_number: int | None = None, sep: str = ",") -> l
     row[COL["Link"]] = o.url
     row[COL["Wiek (dni)"]] = age_formula(row_number, sep) if row_number else ""
     row[COL["Aktywna"]] = "Tak" if row_number else ""
-    row[COL["Status"]] = getattr(o, "status", "") or "Do wysłania"
+    row[COL["Status"]] = "Do wysłania"
     row[COL["Match"]] = round(o.match, 2) if o.match is not None else ""
     row[COL["Poziom"]] = getattr(o, "level", "")
+    row[COL["Trudność"]] = getattr(o, "difficulty", None) if getattr(o, "difficulty", None) is not None else ""
     row[COL["AI"]] = getattr(o, "ai", "")
     row[COL["Wymiar"]] = getattr(o, "workload", "")
     row[COL["Widełki / forma"]] = o.salary_text()

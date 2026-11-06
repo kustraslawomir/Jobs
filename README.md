@@ -30,7 +30,7 @@ export GOOGLE_SA_JSON="$(cat klucz.json)"
 export SHEET_ID=...
 python main.py --init
 ```
-Tworzy zakładki **Oferty** (22 kolumny A–V, lista statusów i poziomów, widoki filtrów, ukryta kolumna Klucz), **Aplikowane** (lustro wysłanych ofert), **Źródła**, ukrytą **_opisy** i **Słownik** (89 skilli). W Słowniku ustaw „Mam?” przy żółtych pozycjach „Do weryfikacji”, bo do tego czasu liczą się jako braki.
+Tworzy zakładki **Oferty** (23 kolumny A–W, lista statusów i poziomów, widoki filtrów, ukryta kolumna Klucz), **Aplikowane** (lustro wysłanych ofert), **Źródła**, ukrytą **_opisy** i **Słownik** (89 skilli). W Słowniku ustaw „Mam?” przy żółtych pozycjach „Do weryfikacji”, bo do tego czasu liczą się jako braki.
 
 ### 5. Sprawdzenie źródeł (WAŻNE)
 Portale nie mają oficjalnego API, więc adresy i pola w `sources/*.py` to ich wewnętrzne endpointy strony i **trzeba je zweryfikować**:
@@ -108,12 +108,15 @@ Niektóre portale (teraz czyjesteldorado.pl) blokują adresy IP serwerowni GitHu
 
 ## Układ kolumn Ofert i migracja
 
-Kolejność kolumn (A–V): Dodano, Firma, Stanowisko, Link, Wiek (dni), Aktywna, Status, Wysłano CV, Rozmowa, Następny krok, Termin, Match, Poziom, AI, Widełki / forma, Wymiar, Kontakt, Luki, Dopisz do CV, Notatki, Źródło, Klucz (ukryta). Kolumny Alert już nie ma.
+Kolejność kolumn (A–W): Dodano, Firma, Stanowisko, Link, Wiek (dni), Aktywna, Status, Wysłano CV, Rozmowa, Następny krok, Termin, Match, Poziom, Trudność, AI, Widełki / forma, Wymiar, Kontakt, Luki, Dopisz do CV, Notatki, Źródło, Klucz (ukryta). Kolumny Alert już nie ma.
 
 Skrypt nie zapisuje do arkusza, którego nagłówki Ofert różnią się od tego układu (zatrzymuje się z błędem), żeby dane nie trafiły do złych kolumn. Stary arkusz przestawia tryb **migrate** (Actions → Run workflow → `migrate`, lokalnie `python main.py --migrate`):
 - robi kopię zakładki jako `Oferty_backup_<data>`,
 - zmienia tylko strukturę kolumn (usunięcie Alert, wstawienie pustych kolumn Poziom i AI przez insertDimension, przeniesienie Widełek i Kontaktu), nie przepisuje danych, więc ręczne wpisy zostają,
 - uzupełnia puste komórki AI (tylko tam, gdzie coś wykryto) oraz Poziomu na podstawie opisów z ukrytej zakładki _opisy (po Kluczu; brak opisu = „?”) i dopisuje powód do Notatek, uzupełnia też Wymiar z opisów; komórki z już wpisanym Poziomem zostają,
 - jest idempotentna: w nowym układzie nic nie robi, w układzie pośrednim kończy brakujące kroki,
-- odtwarza widoki filtrów (A:V, w tym „AI”, „Część etatu / zlecenia” i „Świeże”), dodaje listę wartości i pomarańczowe tło dla Senior+ w kolumnie Poziom, fiolet dla wierszy z AI (szarość zamkniętych statusów ma pierwszeństwo; jeśli arkusz nie ma takiej reguły, zostanie dodana), odświeża Aplikowane (A:T).
+- odtwarza widoki filtrów (A:W, w tym „AI”, „Część etatu / zlecenia”, „Świeże” i „Spokojne”), dodaje listę wartości i pomarańczowe tło dla Senior+ w kolumnie Poziom, fiolet dla wierszy z AI (szarość zamkniętych statusów ma pierwszeństwo; jeśli arkusz nie ma takiej reguły, zostanie dodana), odświeża Aplikowane (A:U).
 Kopię (`Oferty_backup_*`) usuń ręcznie po sprawdzeniu arkusza.
+
+## Trudność (0–10)
+Kolumna **Trudność** (zaraz za Poziomem) to ocena z samego ogłoszenia: punkty za poziom (Mid 2, Senior 4, Senior+ 6, „?” 3), za sygnały trudnej rozmowy i roli (live coding i LeetCode po 3, system design 1,5, zadanie domowe, 4+ etapy, prowadzenie zespołu, architektura, techniczne przywództwo po 1; zaprzeczenia typu „no live coding” się nie liczą) i do 2 punktów za presję (szybkie tempo, dyżury, startup). Wagi są w `config.yaml` (sekcja `difficulty`), powody w Notatkach („Trudność 8/10: Mid, live coding, …”). Widok filtra **Spokojne** pokazuje „Do wysłania” z trudnością ≤ 4. Nic nie zmienia statusu automatycznie – decyzję o rezygnacji podejmujesz sam.

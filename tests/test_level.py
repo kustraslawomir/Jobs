@@ -142,5 +142,5 @@ def test_regular_titles_still_pass(title):
     ("without any leetcode", []),
     ("zwykła oferta, rozmowa techniczna", []),
 ])
-def test_dealbreakers(text, expected):
-    assert level.dealbreakers(text, CFG, ["live coding", "algorytmy / LeetCode"]) == expected
+def test_negation_safe_signals(text, expected):
+    assert level.negation_safe_signals(text, CFG, ["live coding", "algorytmy / LeetCode"]) == expected

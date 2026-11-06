@@ -79,10 +79,25 @@ level:
     "4+ etapy rekrutacji":
       - '(?:[4-9]|four|five|six|cztery|piec|szesc) (?:stage|stages|step|steps|round|rounds|interview|interviews|etap\w*|rozmow\w*)'
 
-# twarde dyskwalifikatory rozmowy: etykiety z level.bump_signals. Oferta z takim sygnałem trafia do arkusza,
-# ale od razu ze statusem "Rezygnacja" (znika z "Do przejrzenia" i z Aplikowane) i notatką "Odpada: ...".
-# Zdanie z zaprzeczeniem ("no live coding", "bez live codingu") nie liczy się.
-dealbreakers: ["live coding", "algorytmy / LeetCode"]
+# trudność pracy / rozmowy / projektu, skala 0-10 (kolumna Trudność, moduł difficulty.py). 0 = spokojna praca na Mid, 10 = lead z live codingiem.
+# Wynik = punkty za poziom + punkty za sygnały (etykiety z level.bump_signals; zdanie z zaprzeczeniem, np. "no live coding", nie liczy się)
+# + punkty za presję w opisie (regexy na tekście znormalizowanym, max pressure_cap), obcięty do 0-10.
+difficulty:
+  level_points: {"Mid": 2, "Senior": 4, "Senior+": 6, "?": 3}
+  signal_points:
+    "live coding": 3
+    "algorytmy / LeetCode": 3
+    "system design": 1.5
+    "zadanie domowe": 1
+    "4+ etapy rekrutacji": 1
+    "mentoring / prowadzenie zespołu": 1
+    "ownership of architecture": 1
+    "technical leadership": 1
+  pressure_cap: 2
+  pressure:
+    "presja / tempo": ['fast paced', 'high pressure', 'under pressure', 'tight deadlines?', 'szybkie tempo', 'dynamiczne srodowisko', 'praca pod presja']
+    "dyżury": ['on call', 'on duty', 'dyzur\w*', '24 7']
+    "startup / wiele ról": ['wear many hats', 'start ?up', 'hustle']
 
 # oferty związane z AI (kolumna AI, moduł ai_flag.py). Wpisy to regexy na tekście znormalizowanym
 # (małe litery, bez ogonków i interpunkcji), dopasowywane jako całe słowa z opcjonalnym "s" na końcu.

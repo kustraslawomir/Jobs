@@ -16,6 +16,7 @@ import yaml
 import ai_flag
 import ats
 import employment
+import difficulty
 import level
 import seen
 from dedup import Deduper, SURE_BY_CONTENT, looks_like_agency, norm_description
@@ -96,10 +97,8 @@ def finish(o, verdict, cfg, extra_notes=()):
     o.level = assessment.level
     if assessment.note:
         notes.append(assessment.note)
-    out = level.dealbreakers(f"{o.title} {o.description}", cfg["level"], cfg.get("dealbreakers", []))
-    if out:
-        o.status = "Rezygnacja"
-        notes.append(f"Odpada: {', '.join(out)}")
+    o.difficulty, why = difficulty.score(o.title, o.description, o.level, cfg["level"], cfg["difficulty"])
+    notes.append(f"Trudność {o.difficulty}/10: {', '.join(why)}" if why else f"Trudność {o.difficulty}/10")
     o.note = ". ".join(notes)
 
 
