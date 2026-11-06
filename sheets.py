@@ -502,6 +502,11 @@ def report(sh, cfg):
     rows = [r for r in rows if r[COL["Firma"]] or r[COL["Stanowisko"]]]
     desc = read_descriptions(sh, cfg)
     print("Nagłówki Ofert:", ws.row_values(1))
+    meta = sh.fetch_sheet_metadata(params={"fields": "properties.locale,sheets(properties(sheetId,title),conditionalFormats)"})
+    print("Locale arkusza:", meta["properties"]["locale"])
+    for sheet in meta["sheets"]:
+        for r in sheet.get("conditionalFormats", []):
+            print("  reguła", sheet["properties"]["title"], json.dumps(r, ensure_ascii=False))
     print(f"Wierszy: {len(rows)}; rozkład Poziomów:", dict(Counter(r[COL["Poziom"]] or "(puste)" for r in rows)))
     print("Przykłady Senior+ (do 5):")
     for r in [r for r in rows if r[COL["Poziom"]] == level.SENIOR_PLUS][:5]:
