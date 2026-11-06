@@ -298,3 +298,9 @@ def test_difficulty_backfill_fills_only_blank_cells_and_works_without_a_descript
     out = sheets.difficulty_backfill(rows, {"c": "Live coding session and system design"}, cfg)
     assert [(n, v) for n, v, _ in out] == [(2, 2), (4, 9), (5, 3)]        # Mid 2; Senior 4 + live coding 3 + system design 1.5 = 8.5 -> 9; brak poziomu 3
     assert out[1][2] == "Trudność 9/10: Senior, live coding, system design"
+
+
+def test_consideration_statuses_are_selectable_and_show_up_in_the_mirror():
+    assert sheets.STATUSES[:3] == ["Do wysłania", "Do rozważenia", "Rozważam"]
+    _, a2 = sheets.mirror_formulas(";")
+    assert '<>"Do wysłania"' in a2 and "Do rozważenia" not in a2 and "Rozważam" not in a2      # lustro wycina tylko Do wysłania i Rezygnację

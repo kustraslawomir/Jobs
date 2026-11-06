@@ -120,3 +120,6 @@ Kopię (`Oferty_backup_*`) usuń ręcznie po sprawdzeniu arkusza.
 
 ## Trudność (0–10)
 Kolumna **Trudność** (zaraz za Poziomem) to ocena z samego ogłoszenia: punkty za poziom (Mid 2, Senior 4, Senior+ 6, „?” 3), za sygnały trudnej rozmowy i roli (live coding i LeetCode po 3, system design 1,5, zadanie domowe, 4+ etapy, prowadzenie zespołu, architektura, techniczne przywództwo po 1; zaprzeczenia typu „no live coding” się nie liczą) i do 2 punktów za presję (szybkie tempo, dyżury, startup). Wagi są w `config.yaml` (sekcja `difficulty`), powody w Notatkach („Trudność 8/10: Mid, live coding, …”). Widok filtra **Spokojne** pokazuje „Do wysłania” z trudnością ≤ 4. Nic nie zmienia statusu automatycznie – decyzję o rezygnacji podejmujesz sam.
+
+## Statusy i zakładka Aplikowane
+Lista statusów: Do wysłania, **Do rozważenia**, **Rozważam**, Wysłane, Odpowiedź, Rozmowa, Zadanie domowe, Oferta, Przyjęta, Odrzucone, Rezygnacja, Ghosting. Zakładka **Aplikowane** pokazuje wszystko poza „Do wysłania”, „Rezygnacja” i pustym statusem, więc także oferty „Do rozważenia” i „Rozważam”, nie tylko wysłane CV. Nieaktywne ogłoszenia są na dole.
