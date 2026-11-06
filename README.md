@@ -108,7 +108,7 @@ Niektóre portale (teraz czyjesteldorado.pl) blokują adresy IP serwerowni GitHu
 
 ## Układ kolumn Ofert i migracja
 
-Kolejność kolumn (A–X): Dodano, Stanowisko, Firma, Link, Wiek (dni), Aktywna, Trudność, Status, Powód, Wysłano CV, Rozmowa, Następny krok, Termin, Match, Poziom, AI, Widełki / forma, Wymiar, Kontakt, Luki, Dopisz do CV, Notatki, Źródło, Klucz (ukryta). Kolumny Alert już nie ma.
+Kolejność kolumn (A–X): Dodano, Poziom, Stanowisko, Firma, Link (hiperłącze pokazujące samą domenę), Wiek (dni), Trudność, Aktywna, Status, Powód, Wysłano CV, Rozmowa, Następny krok, Termin, Match, AI, Widełki / forma, Wymiar, Kontakt, Luki, Dopisz do CV, Notatki, Źródło, Klucz (ukryta). Kolumny Alert już nie ma.
 
 Skrypt nie zapisuje do arkusza, którego nagłówki Ofert różnią się od tego układu (zatrzymuje się z błędem), żeby dane nie trafiły do złych kolumn. Stary arkusz przestawia tryb **migrate** (Actions → Run workflow → `migrate`, lokalnie `python main.py --migrate`):
 - robi kopię zakładki jako `Oferty_backup_<data>`,

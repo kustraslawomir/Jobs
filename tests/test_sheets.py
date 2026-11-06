@@ -16,11 +16,11 @@ def test_new_offers_are_sorted_by_match_descending_with_empty_match_last():
 def test_mirror_formulas_use_semicolons_for_polish_locale():
     a1, a2 = sheets.mirror_formulas(sheets.arg_separator("pl_PL"))
     assert a1 == "={Oferty!A1:V1}"                                   # A:V = Dodano ... Notatki (bez Źródło i Klucz)
-    c = ';Oferty!H2:H<>"";Oferty!H2:H<>"Do wysłania"'
-    rank = ('ARRAYFORMULA(IF((Oferty!H2:H="Odrzucone")+(Oferty!H2:H="Rezygnacja")+(Oferty!H2:H="Ghosting");3;'
-            'IF(Oferty!F2:F="Nie";2;IF((Oferty!H2:H="Do rozważenia")+(Oferty!H2:H="Rozważam");1;0))))')
+    c = ';Oferty!I2:I<>"";Oferty!I2:I<>"Do wysłania"'
+    rank = ('ARRAYFORMULA(IF((Oferty!I2:I="Odrzucone")+(Oferty!I2:I="Rezygnacja")+(Oferty!I2:I="Ghosting");3;'
+            'IF(Oferty!H2:H="Nie";2;IF((Oferty!I2:I="Do rozważenia")+(Oferty!I2:I="Rozważam");1;0))))')
     assert a2 == (f'=IFERROR(SORT(FILTER(Oferty!A2:V{c});FILTER({rank}{c});TRUE;'
-                  f'FILTER(Oferty!J2:J{c});FALSE);"Jeszcze nic nie wysłane")')   # grupa 0-3, potem po Wysłano CV (J)
+                  f'FILTER(Oferty!K2:K{c});FALSE);"Jeszcze nic nie wysłane")')   # grupa 0-3, potem po Wysłano CV (K)
 
 
 def test_mirror_formulas_use_commas_for_en_us():
@@ -64,8 +64,8 @@ def test_blank_sheet_detection():
     assert not sheets.is_blank([["", ""], ["", "x"]])
 
 
-NEW = ["Dodano", "Stanowisko", "Firma", "Link", "Wiek (dni)", "Aktywna", "Trudność", "Status", "Powód", "Wysłano CV", "Rozmowa", "Następny krok",
-       "Termin", "Match", "Poziom", "AI", "Widełki / forma", "Wymiar", "Kontakt", "Luki", "Dopisz do CV", "Notatki", "Źródło", "Klucz"]
+NEW = ["Dodano", "Poziom", "Stanowisko", "Firma", "Link", "Wiek (dni)", "Trudność", "Aktywna", "Status", "Powód", "Wysłano CV", "Rozmowa", "Następny krok",
+       "Termin", "Match", "AI", "Widełki / forma", "Wymiar", "Kontakt", "Luki", "Dopisz do CV", "Notatki", "Źródło", "Klucz"]
 NO_LEVEL = [h for h in NEW if h not in ("Wiek (dni)", "Aktywna", "Poziom", "Trudność", "AI", "Powód", "Wymiar")]   # 17 kolumn, sprzed Poziomu
 NO_AGE = [h for h in NEW if h not in ("Wiek (dni)", "Aktywna", "Trudność", "Powód")]                             # z Poziomem, AI i Wymiarem
 NO_WYMIAR = [h for h in NEW if h != "Wymiar"]
@@ -78,20 +78,20 @@ OLD = ["Dodano", "Stanowisko", "Firma", "Link", "Status", "Wysłano CV", "Rozmow
 
 
 def apply(headers, reqs):
-    """Symulacja semantyki API: deleteDimension usuwa kolumnę, insertDimension wstawia pustą (nagłówki dopisuje potem migrate, w tej samej kolejności), moveDimension wstawia kolumnę PRZED destinationIndex układu wyjściowego."""
+    """Symulacja semantyki API: deleteDimension usuwa kolumnę, insertDimension wstawia pustą (nagłówki dopisuje potem migrate po nazwach; tu nazwy dostają puste kolumny w kolejności wstawiania), moveDimension wstawia kolumnę PRZED destinationIndex układu wyjściowego."""
+    missing = iter(n for n in ("Wiek (dni)", "Aktywna", "Trudność", "Poziom", "AI", "Powód", "Wymiar") if n not in headers)
     h = list(headers)
     for r in reqs:
         if "deleteDimension" in r:
             h.pop(r["deleteDimension"]["range"]["startIndex"])
         elif "insertDimension" in r:
-            h.insert(r["insertDimension"]["range"]["startIndex"], "")
+            h.insert(r["insertDimension"]["range"]["startIndex"], next(missing))
         else:
             m = r["moveDimension"]
             i, d = m["source"]["startIndex"], m["destinationIndex"]
             col = h.pop(i)
             h.insert(d - 1 if d > i else d, col)
-    names = iter(n for n in ("Wiek (dni)", "Aktywna", "Trudność", "Powód", "Poziom", "AI", "Wymiar") if n not in h)
-    return [next(names) if c == "" else c for c in h]
+    return h
 
 
 def insert(i):
@@ -99,35 +99,61 @@ def insert(i):
                                 "inheritFromBefore": False}}
 
 
-def test_new_layout_has_24_columns_with_age_after_link_and_key_last():
+def without_level(headers):
+    return [h for h in headers if h != "Poziom"]
+
+
+def with_level_after_match(headers):
+    h = without_level(headers)
+    h.insert(h.index("Match") + 1, "Poziom")
+    return h
+
+
+def kinds(reqs):
+    return [list(r)[0] for r in reqs]
+
+
+def test_new_layout_has_24_columns_with_level_in_front_and_key_last():
     C = sheets.COL
     assert sheets.HEADERS == NEW and len(NEW) == 24
-    assert (C["Link"], C["Wiek (dni)"], C["Aktywna"], C["Trudność"], C["Status"], C["Powód"], C["Match"], C["Poziom"], C["AI"], C["Widełki / forma"],
-            C["Wymiar"], C["Kontakt"], C["Notatki"], C["Klucz"]) == (3, 4, 5, 6, 7, 8, 13, 14, 15, 16, 17, 18, 21, 23)
+    assert (C["Poziom"], C["Stanowisko"], C["Firma"], C["Link"], C["Wiek (dni)"], C["Trudność"], C["Aktywna"], C["Status"], C["Powód"], C["Match"],
+            C["AI"], C["Widełki / forma"], C["Wymiar"], C["Kontakt"], C["Notatki"], C["Klucz"]) == (1, 2, 3, 4, 5, 6, 7, 8, 9, 14, 15, 16, 17, 18, 21, 23)
     assert sheets.MIRROR_COLS == 22 and sheets.MIRROR_LAST == "V"
     assert "Alert" not in C
 
 
-def test_migration_of_17_column_layout_inserts_seven_columns_without_touching_data():
-    reqs = sheets.migration_requests(NO_LEVEL, 5)
-    assert [list(r)[0] for r in reqs] == ["insertDimension"] * 7
-    assert [r["insertDimension"]["range"]["startIndex"] for r in reqs] == [4, 5, 6, 13, 14, 8, 17]
-    assert apply(NO_LEVEL, reqs) == NEW
+def test_migration_of_the_live_layout_moves_only_poziom_to_the_front():
+    live = with_level_after_match(NEW)
+    live[1], live[2] = "Stanowisko", "Firma"                      # układ sprzed przeniesienia Poziomu: Poziom za Match
+    reqs = sheets.migration_requests(live, 5)
+    assert kinds(reqs) == ["moveDimension"] and apply(live, reqs) == NEW
+    swapped = list(live)
+    swapped[1], swapped[2] = "Firma", "Stanowisko"                # jeszcze starszy: Firma przed Stanowiskiem
+    reqs = sheets.migration_requests(swapped, 5)
+    assert kinds(reqs) == ["moveDimension"] * 2 and apply(swapped, reqs) == NEW
 
 
-def test_migration_of_the_previous_layout_inserts_only_age_and_active_after_link():
-    reqs = sheets.migration_requests(NO_AGE, 5)
-    assert reqs == [insert(4), insert(5), insert(6), insert(8)] and apply(NO_AGE, reqs) == NEW
-    assert sheets.migration_requests(NO_WYMIAR, 5) == [insert(17)] and apply(NO_WYMIAR, [insert(17)]) == NEW
-    assert sheets.migration_requests(NO_POWOD, 5) == [insert(8)] and apply(NO_POWOD, [insert(8)]) == NEW        # Powód zaraz za Statusem
-    assert sheets.migration_requests(NO_TRUDNOSC, 5) == [insert(6)] and apply(NO_TRUDNOSC, [insert(6)]) == NEW   # Trudność zaraz za Aktywną
-    moved = sheets.migration_requests(PREV, 5)                                       # poprzedni układ (Trudność za Poziomem): jedno przeniesienie
-    assert [list(r)[0] for r in moved] == ["insertDimension", "moveDimension"] and apply(PREV, moved) == NEW
+def test_migration_of_17_column_layout_inserts_seven_columns_and_moves_poziom():
+    no_level = [h for h in NEW if h not in ("Wiek (dni)", "Aktywna", "Poziom", "Trudność", "AI", "Powód", "Wymiar")]
+    reqs = sheets.migration_requests(no_level, 5)
+    assert kinds(reqs).count("insertDimension") == 7 and "moveDimension" in kinds(reqs) and apply(no_level, reqs) == NEW
 
 
-def test_migration_of_old_layout_deletes_alert_inserts_columns_and_moves_two():
+def test_migration_of_intermediate_layouts_only_adds_what_is_missing():
+    base = with_level_after_match(NEW)
+    for missing in ("Wymiar", "Powód", "Trudność"):
+        h = [x for x in base if x != missing]
+        reqs = sheets.migration_requests(h, 5)
+        assert kinds(reqs).count("insertDimension") == 1 and apply(h, reqs) == NEW, missing
+    prev = [x for x in base if x not in ("Trudność", "Powód")]                  # Trudność jeszcze za Poziomem
+    prev.insert(prev.index("Poziom") + 1, "Trudność")
+    reqs = sheets.migration_requests(prev, 5)
+    assert apply(prev, reqs) == NEW and "moveDimension" in kinds(reqs)
+
+
+def test_migration_of_old_layout_deletes_alert_inserts_columns_and_moves():
     reqs = sheets.migration_requests(OLD, 5)
-    assert [list(r)[0] for r in reqs] == ["deleteDimension"] + ["insertDimension"] * 6 + ["moveDimension"] * 2 + ["insertDimension"]
+    assert kinds(reqs)[0] == "deleteDimension" and kinds(reqs).count("insertDimension") == 7 and "moveDimension" in kinds(reqs)
     assert reqs[0]["deleteDimension"]["range"] == {"sheetId": 5, "dimension": "COLUMNS", "startIndex": 9, "endIndex": 10}
     assert apply(OLD, reqs) == NEW
 
@@ -136,19 +162,10 @@ def test_migration_is_idempotent_and_finishes_intermediate_layouts():
     assert sheets.migration_requests(NEW, 5) == []
     no_alert = [h for h in OLD if h != "Alert"]
     reqs = sheets.migration_requests(no_alert, 5)
-    assert [list(r)[0] for r in reqs].count("moveDimension") == 2 and apply(no_alert, reqs) == NEW
+    assert apply(no_alert, reqs) == NEW
     half = ["Dodano", "Stanowisko", "Firma", "Link", "Status", "Wysłano CV", "Rozmowa", "Następny krok", "Termin",
             "Match", "Widełki / forma", "Luki", "Dopisz do CV", "Kontakt", "Notatki", "Źródło", "Klucz"]
-    reqs = sheets.migration_requests(half, 5)
-    assert [list(r)[0] for r in reqs].count("moveDimension") == 1 and apply(half, reqs) == NEW
-
-
-def test_migration_swaps_firma_and_stanowisko_with_a_single_move():
-    live = list(NEW)
-    live[1], live[2] = "Firma", "Stanowisko"                      # układ sprzed zamiany: B = Firma, C = Stanowisko
-    reqs = sheets.migration_requests(live, 5)
-    assert [list(r)[0] for r in reqs] == ["moveDimension"] and apply(live, reqs) == NEW
-    assert sheets.COL["Stanowisko"] == 1 and sheets.COL["Firma"] == 2
+    assert apply(half, sheets.migration_requests(half, 5)) == NEW
 
 
 def test_migration_refuses_unknown_layouts_before_changing_anything():
@@ -231,7 +248,7 @@ CFG_LEVEL = __import__("yaml").safe_load(open(os.path.join(os.path.dirname(os.pa
 def test_level_backfill_fills_only_blank_cells_and_appends_to_notes():
     def row(firma, tytul, poziom, notatki, klucz):
         r = [""] * 24
-        r[1], r[2], r[sheets.COL["Poziom"]], r[sheets.COL["Notatki"]], r[sheets.COL["Klucz"]] = firma, tytul, poziom, notatki, klucz
+        r[sheets.COL["Firma"]], r[sheets.COL["Stanowisko"]], r[sheets.COL["Poziom"]], r[sheets.COL["Notatki"]], r[sheets.COL["Klucz"]] = firma, tytul, poziom, notatki, klucz
         return r
     rows = [row("A", "Android Developer", "", "ręczna notatka", "x:1"),       # wiersz 2: opis -> Senior+ (8 lat)
             row("B", "Android Developer", "Mid", "moje", "x:2"),              # wiersz 3: ręcznie ustawiony, bez zmian
@@ -250,7 +267,7 @@ CFG_AI = __import__("yaml").safe_load(open(os.path.join(os.path.dirname(os.path.
 def test_ai_backfill_fills_only_blank_cells_with_a_description_and_a_hit():
     def row(tytul, ai, klucz):
         r = [""] * 24
-        r[1], r[2], r[sheets.COL["AI"]], r[sheets.COL["Klucz"]] = "Firma", tytul, ai, klucz
+        r[sheets.COL["Firma"]], r[sheets.COL["Stanowisko"]], r[sheets.COL["AI"]], r[sheets.COL["Klucz"]] = "Firma", tytul, ai, klucz
         return r
     rows = [row("Android Developer", "", "x:1"), row("Android Developer", "ręcznie", "x:2"),
             row("Android Developer", "", "x:3"), row("Android Developer", "", "x:4")]
@@ -264,10 +281,10 @@ def test_format_rules_are_status_based_without_purple_and_rebuilt_only_when_diff
     assert [r["index"] for r in rules] == [0, 1, 2, 3]            # odrzucone > nieaktywne > w procesie > do rozważenia
     rejected, inactive, sent, consider = (r["rule"] for r in rules)
     f = lambda r: r["booleanRule"]["condition"]["values"][0]["userEnteredValue"]
-    assert f(rejected) == '=OR($H2="Odrzucone",$H2="Rezygnacja",$H2="Ghosting")'
-    assert f(inactive) == '=$F2="Nie"'
-    assert f(sent) == '=OR($H2="Wysłane",$H2="Odpowiedź",$H2="Rozmowa",$H2="Zadanie domowe",$H2="Oferta",$H2="Przyjęta")'
-    assert f(consider) == '=OR($H2="Do rozważenia",$H2="Rozważam")'
+    assert f(rejected) == '=OR($I2="Odrzucone",$I2="Rezygnacja",$I2="Ghosting")'
+    assert f(inactive) == '=$H2="Nie"'
+    assert f(sent) == '=OR($I2="Wysłane",$I2="Odpowiedź",$I2="Rozmowa",$I2="Zadanie domowe",$I2="Oferta",$I2="Przyjęta")'
+    assert f(consider) == '=OR($I2="Do rozważenia",$I2="Rozważam")'
     assert f(sheets.format_requests(7, [], ";")[0]["addConditionalFormatRule"]["rule"]).count(";") == 2        # locale pl
     assert rejected["ranges"] == [{"sheetId": 7, "startRowIndex": 1, "startColumnIndex": 0, "endColumnIndex": 24}]
     assert sheets.format_requests(7, [], width=sheets.MIRROR_COLS)[-1]["addConditionalFormatRule"]["rule"]["ranges"][0]["endColumnIndex"] == 22
@@ -289,7 +306,7 @@ def test_old_rules_purple_senior_plus_and_age_colors_are_all_dropped_before_the_
 def test_workload_backfill_fills_blank_cells_only_and_leaves_notes_alone():
     def row(wymiar, klucz):
         r = [""] * 24
-        r[2], r[sheets.COL["Wymiar"]], r[sheets.COL["Klucz"]] = "Android Developer", wymiar, klucz
+        r[sheets.COL["Stanowisko"]], r[sheets.COL["Wymiar"]], r[sheets.COL["Klucz"]] = "Android Developer", wymiar, klucz
         return r
     rows = [row("", "x:1"), row("Zlecenie / kontrakt", "x:2"), row("", "x:3"), row("", "x:4"), row("", "x:5")]
     desc = {"x:1": "praca na 1/2 etatu", "x:2": "pełny etat", "x:3": "Pełny etat, B2B", "x:4": "kotlin compose"}
@@ -299,7 +316,7 @@ def test_workload_backfill_fills_blank_cells_only_and_leaves_notes_alone():
 def test_age_backfill_fills_blank_age_formula_and_active_only_for_rows_with_a_key():
     def row(firma, klucz, wiek="", aktywna=""):
         r = [""] * 24
-        r[1], r[sheets.COL["Klucz"]], r[sheets.COL["Wiek (dni)"]], r[sheets.COL["Aktywna"]] = firma, klucz, wiek, aktywna
+        r[sheets.COL["Firma"]], r[sheets.COL["Klucz"]], r[sheets.COL["Wiek (dni)"]], r[sheets.COL["Aktywna"]] = firma, klucz, wiek, aktywna
         return r
     rows = [row("A", "x:1"), row("B", "x:2", "5", "Zniknęła 2026-10-01"), row("C", ""), row("", ""), row("D", "x:4", "", "Tak")]
     out = sheets.age_backfill(rows, ";")
@@ -311,7 +328,7 @@ def test_activity_updates_touch_only_changed_cells_and_keep_the_first_disappeara
     from seen import Summary
     def row(klucz, aktywna, notatki):
         r = [""] * 24
-        r[1], r[sheets.COL["Klucz"]], r[sheets.COL["Aktywna"]], r[sheets.COL["Notatki"]] = "F", klucz, aktywna, notatki
+        r[sheets.COL["Firma"]], r[sheets.COL["Klucz"]], r[sheets.COL["Aktywna"]], r[sheets.COL["Notatki"]] = "F", klucz, aktywna, notatki
         return r
     rows = [row("a", "Tak", "Poziom: x"), row("b", "Tak", ""), row("c", "Zniknęła 2026-10-01", ""), row("d", "", "stara. Odświeżana 2×"),
             row("e", "Tak", "")]
@@ -327,7 +344,7 @@ def test_difficulty_backfill_fills_only_blank_cells_and_works_without_a_descript
     cfg = {"level": CFG_LEVEL, "difficulty": __import__("yaml").safe_load(open("config.yaml", encoding="utf-8"))["difficulty"]}
     def row(titel, trud, poziom, klucz):
         r = [""] * 24
-        r[1], r[2], r[C["Poziom"]], r[C["Trudność"]], r[C["Klucz"]] = "Firma", titel, poziom, trud, klucz
+        r[sheets.COL["Firma"]], r[sheets.COL["Stanowisko"]], r[C["Poziom"]], r[C["Trudność"]], r[C["Klucz"]] = "Firma", titel, poziom, trud, klucz
         return r
     rows = [row("Android Developer", "", "Mid", "a"), row("Android Developer", "5", "Mid", "b"),
             row("Android Developer", "", "Senior", "c"), row("Android Developer", "", "", "d")]
@@ -354,3 +371,11 @@ def test_sort_rank_orders_sent_then_considering_then_rest_then_inactive_then_rej
                                                        ("Rezygnacja", "Tak"), ("Odrzucone", "Nie"))]
     assert ranks == [0, 0, 1, 1, 2, 2, 3, 3, 4, 4]
     assert sheets.sort_rank(row(firma="")) == 9
+
+
+def test_link_is_a_hyperlink_showing_only_the_domain_and_backfill_converts_plain_urls_once():
+    assert sheets.link_formula("https://www.justjoin.it/job-offer/abc?x=1", ";") == '=HYPERLINK("https://www.justjoin.it/job-offer/abc?x=1";"justjoin.it")'
+    assert sheets.link_formula("https://nofluffjobs.com/pl/job/x", ",") == '=HYPERLINK("https://nofluffjobs.com/pl/job/x","nofluffjobs.com")'
+    assert sheets.link_formula("", ";") == "" and sheets.link_formula("nie link", ";") == "nie link"
+    cells = [["https://a.pl/1"], ['=HYPERLINK("https://b.pl/2";"b.pl")'], [""], ["tekst"]]
+    assert sheets.link_backfill(cells, ";") == [(2, '=HYPERLINK("https://a.pl/1";"a.pl")')]

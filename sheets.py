@@ -11,8 +11,8 @@ import difficulty
 import level
 import seen
 
-HEADERS = ["Dodano", "Stanowisko", "Firma", "Link", "Wiek (dni)", "Aktywna", "Trudność", "Status", "Powód", "Wysłano CV", "Rozmowa",
-           "Następny krok", "Termin", "Match", "Poziom", "AI", "Widełki / forma", "Wymiar", "Kontakt", "Luki", "Dopisz do CV",
+HEADERS = ["Dodano", "Poziom", "Stanowisko", "Firma", "Link", "Wiek (dni)", "Trudność", "Aktywna", "Status", "Powód", "Wysłano CV", "Rozmowa",
+           "Następny krok", "Termin", "Match", "AI", "Widełki / forma", "Wymiar", "Kontakt", "Luki", "Dopisz do CV",
            "Notatki", "Źródło", "Klucz"]
 COL = {h: i for i, h in enumerate(HEADERS)}           # 0-based
 STATUSES = ["Do wysłania", "Do rozważenia", "Rozważam", "Wysłane", "Odpowiedź", "Rozmowa", "Zadanie domowe", "Oferta",
@@ -360,8 +360,10 @@ def migration_requests(headers: list[str], sheet_id: int) -> list[dict]:
         if i != p:                                  # destinationIndex liczony na układzie sprzed przeniesienia
             reqs.append({"moveDimension": {"source": dim(i), "destinationIndex": p if i > p else p + 1}})
 
-    place_after("Stanowisko", "Dodano")                                  # Stanowisko stoi przed Firmą (B = Stanowisko, C = Firma)
-    place_after("Trudność", "Aktywna")                                   # Trudność stoi przed Statusem
+    place_after("Poziom", "Dodano")                                      # Poziom na samym przodzie: B = Poziom, C = Stanowisko, D = Firma
+    place_after("Stanowisko", "Poziom")
+    place_after("Trudność", "Wiek (dni)")                                # Wiek, Trudność, Aktywna, Status
+    place_after("Aktywna", "Trudność")
     place_after("Widełki / forma", "AI")
     place_after("Kontakt", "Wymiar" if "Wymiar" in h else "Widełki / forma")
     if "Wymiar" not in h and "Widełki / forma" in h:                   # pusta kolumna zaraz za Widełkami, przed Kontaktem
@@ -533,6 +535,11 @@ def backfill_columns(sh, cfg, ws, locale: str = "en_US"):
             formulas.append({"range": f"{col_letter(COL['Aktywna'])}{n}", "values": [[active]]})
     if formulas:
         ws.batch_update(formulas, value_input_option="USER_ENTERED")
+    link_col = col_letter(COL["Link"])
+    links = link_backfill(ws.get(f"{link_col}2:{link_col}", value_render_option="FORMULA"), arg_separator(locale))
+    if links:
+        ws.batch_update([{"range": f"{link_col}{n}", "values": [[f]]} for n, f in links], value_input_option="USER_ENTERED")
+    print("Link: zamieniono na hiperłącza", len(links), "komórek.")
     print("Wiek / Aktywna: uzupełniono", len(ages), "wierszy.")
     from collections import Counter
     print("Poziom: uzupełniono", len(levels), "wierszy:", dict(Counter(u[1] for u in levels)))
@@ -837,12 +844,33 @@ def sort_by_match(offers):
     return sorted(offers, key=lambda o: (o.match is None, -(o.match or 0)))
 
 
+def link_formula(url: str, sep: str = ",") -> str:
+    """Link jako hiperłącze, które pokazuje samą domenę (bez www). Nie-adresy zostają bez zmian."""
+    from urllib.parse import urlparse
+    url = (url or "").strip()
+    if not url.lower().startswith(("http://", "https://")):
+        return url
+    host = urlparse(url).netloc.lower().removeprefix("www.")
+    return f'=HYPERLINK("{url.replace(chr(34), "%22")}"{sep}"{host}")'
+
+
+def link_backfill(cells: list[list[str]], sep: str) -> list[tuple[int, str]]:
+    """Dla komórek Link (bez nagłówka, w formie formuł) zawierających zwykły adres: (numer wiersza, formuła). Gotowe hiperłącza zostają."""
+    out = []
+    for n, c in enumerate(cells, start=2):
+        v = (c[0] if c else "").strip()
+        f = link_formula(v, sep)
+        if v and not v.startswith("=") and f != v:
+            out.append((n, f))
+    return out
+
+
 def offer_row(o, today: str, row_number: int | None = None, sep: str = ",") -> list:
     row = [""] * len(HEADERS)
     row[COL["Dodano"]] = today
     row[COL["Firma"]] = o.company
     row[COL["Stanowisko"]] = o.title
-    row[COL["Link"]] = o.url
+    row[COL["Link"]] = link_formula(o.url, sep)
     row[COL["Wiek (dni)"]] = age_formula(row_number, sep) if row_number else ""
     row[COL["Aktywna"]] = "Tak" if row_number else ""
     row[COL["Status"]] = "Do wysłania"
