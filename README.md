@@ -108,14 +108,14 @@ Niektóre portale (teraz czyjesteldorado.pl) blokują adresy IP serwerowni GitHu
 
 ## Układ kolumn Ofert i migracja
 
-Kolejność kolumn (A–X): Dodano, Firma, Stanowisko, Link, Wiek (dni), Aktywna, Trudność, Status, Powód, Wysłano CV, Rozmowa, Następny krok, Termin, Match, Poziom, AI, Widełki / forma, Wymiar, Kontakt, Luki, Dopisz do CV, Notatki, Źródło, Klucz (ukryta). Kolumny Alert już nie ma.
+Kolejność kolumn (A–X): Dodano, Stanowisko, Firma, Link, Wiek (dni), Aktywna, Trudność, Status, Powód, Wysłano CV, Rozmowa, Następny krok, Termin, Match, Poziom, AI, Widełki / forma, Wymiar, Kontakt, Luki, Dopisz do CV, Notatki, Źródło, Klucz (ukryta). Kolumny Alert już nie ma.
 
 Skrypt nie zapisuje do arkusza, którego nagłówki Ofert różnią się od tego układu (zatrzymuje się z błędem), żeby dane nie trafiły do złych kolumn. Stary arkusz przestawia tryb **migrate** (Actions → Run workflow → `migrate`, lokalnie `python main.py --migrate`):
 - robi kopię zakładki jako `Oferty_backup_<data>`,
 - zmienia tylko strukturę kolumn (usunięcie Alert, wstawienie pustych kolumn Poziom i AI przez insertDimension, przeniesienie Widełek i Kontaktu), nie przepisuje danych, więc ręczne wpisy zostają,
 - uzupełnia puste komórki AI (tylko tam, gdzie coś wykryto) oraz Poziomu na podstawie opisów z ukrytej zakładki _opisy (po Kluczu; brak opisu = „?”) i dopisuje powód do Notatek, uzupełnia też Wymiar z opisów; komórki z już wpisanym Poziomem zostają,
 - jest idempotentna: w nowym układzie nic nie robi, w układzie pośrednim kończy brakujące kroki,
-- odtwarza widoki filtrów (A:X, w tym „AI”, „Część etatu / zlecenia”, „Świeże” i „Spokojne”), dodaje listę wartości, przebudowuje kolorowanie wierszy w Ofertach i Aplikowane (odrzucone: ciemnoszare i przekreślone > nieaktywne: jasnoszare > wysłane / w procesie: jasnozielone > Do rozważenia / Rozważam: jasnożółte; poza tym nic nie jest kolorowane), odświeża Aplikowane (A:V).
+- odtwarza widoki filtrów (A:X, w tym „AI”, „Część etatu / zlecenia”, „Świeże”, „Spokojne” i „Mid”), dodaje listę wartości, przebudowuje kolorowanie wierszy w Ofertach i Aplikowane (odrzucone: ciemnoszare i przekreślone > nieaktywne: jasnoszare > wysłane / w procesie: jasnozielone > Do rozważenia / Rozważam: jasnożółte; poza tym nic nie jest kolorowane), odświeża Aplikowane (A:V).
 Kopię (`Oferty_backup_*`) usuń ręcznie po sprawdzeniu arkusza.
 
 ## Trudność (0–10)

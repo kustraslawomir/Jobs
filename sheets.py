@@ -11,7 +11,7 @@ import difficulty
 import level
 import seen
 
-HEADERS = ["Dodano", "Firma", "Stanowisko", "Link", "Wiek (dni)", "Aktywna", "Trudność", "Status", "Powód", "Wysłano CV", "Rozmowa",
+HEADERS = ["Dodano", "Stanowisko", "Firma", "Link", "Wiek (dni)", "Aktywna", "Trudność", "Status", "Powód", "Wysłano CV", "Rozmowa",
            "Następny krok", "Termin", "Match", "Poziom", "AI", "Widełki / forma", "Wymiar", "Kontakt", "Luki", "Dopisz do CV",
            "Notatki", "Źródło", "Klucz"]
 COL = {h: i for i, h in enumerate(HEADERS)}           # 0-based
@@ -359,6 +359,7 @@ def migration_requests(headers: list[str], sheet_id: int) -> list[dict]:
         if i != p:                                  # destinationIndex liczony na układzie sprzed przeniesienia
             reqs.append({"moveDimension": {"source": dim(i), "destinationIndex": p if i > p else p + 1}})
 
+    place_after("Stanowisko", "Dodano")                                  # Stanowisko stoi przed Firmą (B = Stanowisko, C = Firma)
     place_after("Trudność", "Aktywna")                                   # Trudność stoi przed Statusem
     place_after("Widełki / forma", "AI")
     place_after("Kontakt", "Wymiar" if "Wymiar" in h else "Widełki / forma")

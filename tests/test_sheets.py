@@ -64,7 +64,7 @@ def test_blank_sheet_detection():
     assert not sheets.is_blank([["", ""], ["", "x"]])
 
 
-NEW = ["Dodano", "Firma", "Stanowisko", "Link", "Wiek (dni)", "Aktywna", "Trudność", "Status", "Powód", "Wysłano CV", "Rozmowa", "Następny krok",
+NEW = ["Dodano", "Stanowisko", "Firma", "Link", "Wiek (dni)", "Aktywna", "Trudność", "Status", "Powód", "Wysłano CV", "Rozmowa", "Następny krok",
        "Termin", "Match", "Poziom", "AI", "Widełki / forma", "Wymiar", "Kontakt", "Luki", "Dopisz do CV", "Notatki", "Źródło", "Klucz"]
 NO_LEVEL = [h for h in NEW if h not in ("Wiek (dni)", "Aktywna", "Poziom", "Trudność", "AI", "Powód", "Wymiar")]   # 17 kolumn, sprzed Poziomu
 NO_AGE = [h for h in NEW if h not in ("Wiek (dni)", "Aktywna", "Trudność", "Powód")]                             # z Poziomem, AI i Wymiarem
@@ -73,7 +73,7 @@ NO_POWOD = [h for h in NEW if h != "Powód"]
 NO_TRUDNOSC = [h for h in NEW if h != "Trudność"]
 PREV = [h for h in NEW if h not in ("Trudność", "Powód")]            # układ z Trudnością zaraz za Poziomem (poprzednia wersja)
 PREV.insert(PREV.index("Poziom") + 1, "Trudność")
-OLD = ["Dodano", "Firma", "Stanowisko", "Link", "Status", "Wysłano CV", "Rozmowa", "Następny krok", "Termin",
+OLD = ["Dodano", "Stanowisko", "Firma", "Link", "Status", "Wysłano CV", "Rozmowa", "Następny krok", "Termin",
        "Alert", "Match", "Luki", "Dopisz do CV", "Kontakt", "Widełki / forma", "Notatki", "Źródło", "Klucz"]
 
 
@@ -137,10 +137,18 @@ def test_migration_is_idempotent_and_finishes_intermediate_layouts():
     no_alert = [h for h in OLD if h != "Alert"]
     reqs = sheets.migration_requests(no_alert, 5)
     assert [list(r)[0] for r in reqs].count("moveDimension") == 2 and apply(no_alert, reqs) == NEW
-    half = ["Dodano", "Firma", "Stanowisko", "Link", "Status", "Wysłano CV", "Rozmowa", "Następny krok", "Termin",
+    half = ["Dodano", "Stanowisko", "Firma", "Link", "Status", "Wysłano CV", "Rozmowa", "Następny krok", "Termin",
             "Match", "Widełki / forma", "Luki", "Dopisz do CV", "Kontakt", "Notatki", "Źródło", "Klucz"]
     reqs = sheets.migration_requests(half, 5)
     assert [list(r)[0] for r in reqs].count("moveDimension") == 1 and apply(half, reqs) == NEW
+
+
+def test_migration_swaps_firma_and_stanowisko_with_a_single_move():
+    live = list(NEW)
+    live[1], live[2] = "Firma", "Stanowisko"                      # układ sprzed zamiany: B = Firma, C = Stanowisko
+    reqs = sheets.migration_requests(live, 5)
+    assert [list(r)[0] for r in reqs] == ["moveDimension"] and apply(live, reqs) == NEW
+    assert sheets.COL["Stanowisko"] == 1 and sheets.COL["Firma"] == 2
 
 
 def test_migration_refuses_unknown_layouts_before_changing_anything():
