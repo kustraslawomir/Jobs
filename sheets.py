@@ -11,7 +11,7 @@ import difficulty
 import level
 import seen
 
-HEADERS = ["Dodano", "Firma", "Stanowisko", "Link", "Wiek (dni)", "Aktywna", "Trudność", "Status", "Wysłano CV", "Rozmowa",
+HEADERS = ["Dodano", "Firma", "Stanowisko", "Link", "Wiek (dni)", "Aktywna", "Trudność", "Status", "Powód", "Wysłano CV", "Rozmowa",
            "Następny krok", "Termin", "Match", "Poziom", "AI", "Widełki / forma", "Wymiar", "Kontakt", "Luki", "Dopisz do CV",
            "Notatki", "Źródło", "Klucz"]
 COL = {h: i for i, h in enumerate(HEADERS)}           # 0-based
@@ -318,7 +318,7 @@ def migration_requests(headers: list[str], sheet_id: int) -> list[dict]:
         h.pop(i)
 
     for name, anchor in (("Wiek (dni)", "Link"), ("Aktywna", "Wiek (dni)"), ("Trudność", "Aktywna"),       # puste kolumny wstawiane w tej kolejności
-                         ("Poziom", "Match"), ("AI", "Poziom")):
+                         ("Poziom", "Match"), ("AI", "Poziom"), ("Powód", "Status")):
         if name not in h and anchor in h:
             i = h.index(anchor) + 1
             reqs.append({"insertDimension": {"range": dim(i), "inheritFromBefore": False}})
@@ -374,7 +374,7 @@ def migrate(sh, cfg, today: str | None = None):
         sh.batch_update({"requests": stale + drop + reqs})   # widoki mają stare indeksy kolumn: wracają z init()
         row1 = ws.row_values(1)                            # insertDimension wstawia puste kolumny: nagłówki dopisujemy od razu
         for i, name in enumerate(HEADERS):
-            if name in ("Wiek (dni)", "Aktywna", "Poziom", "Trudność", "AI", "Wymiar") and name not in row1:
+            if name in ("Wiek (dni)", "Aktywna", "Poziom", "Trudność", "AI", "Powód", "Wymiar") and name not in row1:
                 ws.update_cell(1, i + 1, name)
         print(f"Migracja: {len(reqs)} operacji na kolumnach, usunięto {len(stale)} widoków filtrów.")
     init(sh, cfg)                                       # idempotentne: walidacje, formaty, widoki, lustro (także po przerwanej migracji)
