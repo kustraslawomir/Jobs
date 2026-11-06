@@ -112,7 +112,7 @@ IN_PROCESS = ["Wysłane", "Odpowiedź", "Rozmowa", "Zadanie domowe", "Oferta", "
 FULL_TIME = employment.FULL
 INACTIVE = "Nie"                                  # wartość kolumny Aktywna dla ogłoszeń, które zniknęły (aktywne: "Tak")
 CALM_MAX = 4                                      # widok "Spokojne": trudność nie większa niż tyle (0-10)
-FILTER_VIEW_TITLES = ("Do przejrzenia", "Najnowsze", "AI", "Część etatu / zlecenia", "Świeże", "Spokojne", "Nieaktywne")
+FILTER_VIEW_TITLES = ("Do przejrzenia", "Najnowsze", "AI", "Część etatu / zlecenia", "Świeże", "Spokojne", "Mid", "Nieaktywne")
 
 
 def filter_view_requests(sheet_id: int, existing_titles) -> list[dict]:
@@ -145,6 +145,10 @@ def filter_view_requests(sheet_id: int, existing_titles) -> list[dict]:
                                                                         "values": [{"userEnteredValue": str(CALM_MAX)}]}},
                                    str(COL["Status"]): {"condition": {"type": "TEXT_EQ",
                                                                       "values": [{"userEnteredValue": "Do wysłania"}]}}}}),
+        ("Mid", {"sortSpecs": [{"dimensionIndex": COL["Match"], "sortOrder": "DESCENDING"}],
+                 "criteria": {str(COL["Poziom"]): {"hiddenValues": [v for v in level.LEVELS if v != "Mid"]},
+                             str(COL["Aktywna"]): {"hiddenValues": [INACTIVE]},
+                             str(COL["Status"]): {"condition": {"type": "TEXT_EQ", "values": [{"userEnteredValue": "Do wysłania"}]}}}}),
         ("Część etatu / zlecenia", {"sortSpecs": [{"dimensionIndex": COL["Match"], "sortOrder": "DESCENDING"}],
                                     "criteria": {str(COL["Wymiar"]): {"condition": {"type": "NOT_BLANK"},
                                                                       "hiddenValues": [FULL_TIME]}}}),

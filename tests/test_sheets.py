@@ -31,7 +31,7 @@ def test_filter_views_cover_whole_columns_and_skip_existing_ones():
     C = sheets.COL
     reqs = sheets.filter_view_requests(7, [])
     f = {r["addFilterView"]["filter"]["title"]: r["addFilterView"]["filter"] for r in reqs}
-    titles = {"Do przejrzenia", "Najnowsze", "AI", "Część etatu / zlecenia", "Świeże", "Spokojne", "Nieaktywne"}
+    titles = {"Do przejrzenia", "Najnowsze", "AI", "Część etatu / zlecenia", "Świeże", "Spokojne", "Mid", "Nieaktywne"}
     assert set(f) == titles == set(sheets.FILTER_VIEW_TITLES)
     todo = f["Do przejrzenia"]
     assert todo["range"] == {"sheetId": 7, "startColumnIndex": 0, "endColumnIndex": 24}       # A:V, bez ograniczenia wierszy
@@ -47,6 +47,7 @@ def test_filter_views_cover_whole_columns_and_skip_existing_ones():
     assert f["AI"]["sortSpecs"] == [{"dimensionIndex": C["Match"], "sortOrder": "DESCENDING"}]
     assert f["Część etatu / zlecenia"]["criteria"] == {str(C["Wymiar"]): {"condition": {"type": "NOT_BLANK"},
                                                                           "hiddenValues": ["Pełny etat"]}}
+    assert f["Mid"]["criteria"][str(C["Poziom"])] == {"hiddenValues": ["Senior", "Senior+", "?"]}      # zostaje tylko Mid
     fresh = f["Świeże"]                                    # Aktywna = Tak, Wiek <= 30, Status = Do wysłania, Match malejąco
     assert fresh["criteria"] == {
         str(C["Aktywna"]): {"condition": {"type": "TEXT_EQ", "values": [{"userEnteredValue": "Tak"}]}},
