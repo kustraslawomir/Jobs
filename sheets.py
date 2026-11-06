@@ -34,6 +34,14 @@ SOURCE_HEADERS = ["Źródło", "Data", "Pobrane", "Nowe", "Błąd"]
 SKILL_HEADERS = ["Kategoria", "Keyword", "Wariant 2", "Wariant 3", "Wariant 4", "Mam?", "Waga 1-3", "Komentarz"]
 
 
+def export_xlsx(sh, path: str):
+    """Tylko odczyt: zapisuje cały arkusz (wszystkie zakładki) jako .xlsx przez eksport Google Drive."""
+    data = sh.export(format=gspread.utils.ExportFormat.EXCEL)
+    with open(path, "wb") as fh:
+        fh.write(data)
+    print(f"Eksport: {path}, {len(data)} bajtów")
+
+
 def connect():
     creds = json.loads(os.environ["GOOGLE_SA_JSON"])
     gc = gspread.service_account_from_dict(creds)

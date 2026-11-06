@@ -155,6 +155,7 @@ def main():
     ap.add_argument("--init", action="store_true")
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--delete-backup", metavar="NAZWA", help="usuń kopię zapasową Oferty_backup_* po migracji")
+    ap.add_argument("--export", metavar="PLIK", help="zapisz cały arkusz jako plik .xlsx (tylko odczyt)")
     ap.add_argument("--report", action="store_true", help="tylko odczyt: poziomy, oferty z AI, trafienia samym \"ai\"")
     ap.add_argument("--add", action="store_true", help="dodaj ofertę ręcznie (--url i/lub --text), bez filtrów, z dedupem i ATS")
     ap.add_argument("--url", help="link do oferty (z --add)")
@@ -181,6 +182,9 @@ def main():
         sh = sheets.connect()
         if args.delete_backup:
             sheets.delete_backup(sh, args.delete_backup)
+            return
+        if args.export:
+            sheets.export_xlsx(sh, args.export)
             return
         if args.report:
             sheets.report(sh, cfg)

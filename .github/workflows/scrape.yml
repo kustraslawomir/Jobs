@@ -8,7 +8,7 @@ on:
       mode:
         description: "Tryb"
         type: choice
-        options: [run, init, dry-run, migrate, report, add, delete-backup]
+        options: [run, init, dry-run, migrate, report, add, delete-backup, export]
         default: run
       backup:
         description: "Nazwa kopii zapasowej do usunięcia (tryb delete-backup)"
@@ -54,6 +54,14 @@ jobs:
             report)  python main.py --report ;;
             add)     python main.py --add --url "$ADD_URL" --text "$ADD_TEXT" ;;
             delete-backup) python main.py --delete-backup "$BACKUP_NAME" ;;
+            export)  python main.py --export Oferty.xlsx ;;
             dry-run) python main.py --dry-run --runner cloud ;;
             *)       python main.py --runner cloud ;;
           esac
+      - name: Plik xlsx
+        if: ${{ inputs.mode == 'export' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: Oferty-xlsx
+          path: Oferty.xlsx
+          retention-days: 1
