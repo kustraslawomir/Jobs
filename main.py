@@ -19,6 +19,7 @@ import ats
 import employment
 import difficulty
 import level
+import recruitment
 import seen
 from dedup import Deduper, SURE_BY_CONTENT, looks_like_agency, norm_description
 from sources import DETAILS, REGISTRY
@@ -98,6 +99,8 @@ def finish(o, verdict, cfg, extra_notes=()):
     o.level = assessment.level
     if assessment.note:
         notes.append(assessment.note)
+    o.stages, found = recruitment.assess(o.description)
+    o.process = recruitment.process_text(found)
     o.difficulty, why = difficulty.score(o.title, o.description, o.level, cfg["level"], cfg["difficulty"])
     notes.append(f"Trudność {o.difficulty}/10: {', '.join(why)}" if why else f"Trudność {o.difficulty}/10")
     o.note = ". ".join(notes)

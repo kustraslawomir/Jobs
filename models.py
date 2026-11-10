@@ -54,6 +54,8 @@ class Offer:
     published: str = ""            # data publikacji z portalu RRRR-MM-DD (najwcześniejsza, jaką portal podaje)
     renewed: str = ""              # najnowsza data z portalu (odświeżenie / bump); puste = brak
     difficulty: int | None = None  # 0-10 (difficulty.py): poziom + sygnały trudnej rozmowy / roli / presji
+    stages: int | None = None      # liczba etapów rekrutacji z opisu (recruitment.py); None = brak pewności
+    process: str = ""              # etapy po przecinku: "HR, techniczna, live coding"
     workload: str = ""             # "Pełny etat" | "Część etatu (1/2)" | "Zlecenie / kontrakt" | "" (employment.py)
 
     @property

@@ -15,12 +15,12 @@ def test_new_offers_are_sorted_by_match_descending_with_empty_match_last():
 
 def test_mirror_formulas_use_semicolons_for_polish_locale():
     a1, a2 = sheets.mirror_formulas(sheets.arg_separator("pl_PL"))
-    assert a1 == "={Oferty!A1:U1}"                                   # A:U = Dodano ... Notatki (bez Klucza)
-    c = ';Oferty!J2:J<>"";Oferty!J2:J<>"Do wysłania"'
-    rank = ('ARRAYFORMULA(IF((Oferty!J2:J="Odrzucone")+(Oferty!J2:J="Rezygnacja")+(Oferty!J2:J="Ghosting");3;'
-            'IF(Oferty!I2:I="Nie";2;IF((Oferty!J2:J="Do rozważenia")+(Oferty!J2:J="Rozważam");1;0))))')
-    assert a2 == (f'=IFERROR(SORT(FILTER(Oferty!A2:U{c});FILTER({rank}{c});TRUE;'
-                  f'FILTER(Oferty!L2:L{c});FALSE);"Jeszcze nic nie wysłane")')   # grupa 0-3, potem po Wysłano CV (L)
+    assert a1 == "={Oferty!A1:W1}"                                   # A:W = Dodano ... Proces rekrutacji (bez Klucza)
+    c = ';Oferty!K2:K<>"";Oferty!K2:K<>"Do wysłania"'
+    rank = ('ARRAYFORMULA(IF((Oferty!K2:K="Odrzucone")+(Oferty!K2:K="Rezygnacja")+(Oferty!K2:K="Ghosting");3;'
+            'IF(Oferty!J2:J="Nie";2;IF((Oferty!K2:K="Do rozważenia")+(Oferty!K2:K="Rozważam");1;0))))')
+    assert a2 == (f'=IFERROR(SORT(FILTER(Oferty!A2:W{c});FILTER({rank}{c});TRUE;'
+                  f'FILTER(Oferty!M2:M{c});FALSE);"Jeszcze nic nie wysłane")')   # grupa 0-3, potem po Wysłano CV (M)
 
 
 def test_mirror_formulas_use_commas_for_en_us():
@@ -34,7 +34,7 @@ def test_filter_views_cover_whole_columns_and_skip_existing_ones():
     titles = {"Do przejrzenia", "Najnowsze", "AI", "Część etatu / zlecenia", "Świeże", "Spokojne", "Mid", "Nieaktywne"}
     assert set(f) == titles == set(sheets.FILTER_VIEW_TITLES)
     todo = f["Do przejrzenia"]
-    assert todo["range"] == {"sheetId": 7, "startColumnIndex": 0, "endColumnIndex": 22}       # A:V, bez ograniczenia wierszy
+    assert todo["range"] == {"sheetId": 7, "startColumnIndex": 0, "endColumnIndex": 24}       # A:X, bez ograniczenia wierszy
     assert todo["sortSpecs"] == [{"dimensionIndex": C["Match"], "sortOrder": "DESCENDING"}]
     assert todo["criteria"] == {str(C["Status"]): {"condition": {"type": "TEXT_EQ", "values": [{"userEnteredValue": "Do wysłania"}]}},
                                 str(C["Poziom"]): {"hiddenValues": ["Senior+"]}, str(C["Aktywna"]): {"hiddenValues": ["Nie"]}}
@@ -64,14 +64,15 @@ def test_blank_sheet_detection():
     assert not sheets.is_blank([["", ""], ["", "x"]])
 
 
-NEW = ["Dodano", "Poziom", "Stanowisko", "Firma", "Link", "Wiek (dni)", "Trudność", "Match", "Aktywna", "Status", "Powód", "Wysłano CV", "Rozmowa", "Następny krok",
-       "Termin", "Widełki / forma", "Wymiar", "Luki", "AI", "Dopisz do CV", "Notatki", "Klucz"]
-NO_LEVEL = [h for h in NEW if h not in ("Wiek (dni)", "Aktywna", "Poziom", "Trudność", "AI", "Powód", "Wymiar")]   # 17 kolumn, sprzed Poziomu
-NO_AGE = [h for h in NEW if h not in ("Wiek (dni)", "Aktywna", "Trudność", "Powód")]                             # z Poziomem, AI i Wymiarem
-NO_WYMIAR = [h for h in NEW if h != "Wymiar"]
-NO_POWOD = [h for h in NEW if h != "Powód"]
-NO_TRUDNOSC = [h for h in NEW if h != "Trudność"]
-PREV = [h for h in NEW if h not in ("Trudność", "Powód")]            # układ z Trudnością zaraz za Poziomem (poprzednia wersja)
+NEW = ["Dodano", "Poziom", "Stanowisko", "Firma", "Link", "Wiek (dni)", "Trudność", "Etapy", "Match", "Aktywna", "Status", "Powód", "Wysłano CV", "Rozmowa", "Następny krok",
+       "Termin", "Widełki / forma", "Wymiar", "Luki", "AI", "Dopisz do CV", "Notatki", "Proces rekrutacji", "Klucz"]
+BASE = [h for h in NEW if h not in ("Etapy", "Proces rekrutacji")]            # poprzedni układ (22 kolumny), od którego startuje ta migracja
+NO_LEVEL = [h for h in BASE if h not in ("Wiek (dni)", "Aktywna", "Poziom", "Trudność", "AI", "Powód", "Wymiar")]   # 17 kolumn, sprzed Poziomu
+NO_AGE = [h for h in BASE if h not in ("Wiek (dni)", "Aktywna", "Trudność", "Powód")]                             # z Poziomem, AI i Wymiarem
+NO_WYMIAR = [h for h in BASE if h != "Wymiar"]
+NO_POWOD = [h for h in BASE if h != "Powód"]
+NO_TRUDNOSC = [h for h in BASE if h != "Trudność"]
+PREV = [h for h in BASE if h not in ("Trudność", "Powód")]            # układ z Trudnością zaraz za Poziomem (poprzednia wersja)
 PREV.insert(PREV.index("Poziom") + 1, "Trudność")
 OLD = ["Dodano", "Stanowisko", "Firma", "Link", "Status", "Wysłano CV", "Rozmowa", "Następny krok", "Termin",
        "Alert", "Match", "Luki", "Dopisz do CV", "Kontakt", "Widełki / forma", "Notatki", "Źródło", "Klucz"]
@@ -79,7 +80,7 @@ OLD = ["Dodano", "Stanowisko", "Firma", "Link", "Status", "Wysłano CV", "Rozmow
 
 def apply(headers, reqs):
     """Symulacja semantyki API: deleteDimension usuwa kolumnę, insertDimension wstawia pustą (nagłówki dopisuje potem migrate po nazwach; tu nazwy dostają puste kolumny w kolejności wstawiania), moveDimension wstawia kolumnę PRZED destinationIndex układu wyjściowego."""
-    missing = iter(n for n in ("Wiek (dni)", "Aktywna", "Trudność", "Poziom", "AI", "Powód", "Wymiar") if n not in headers)
+    missing = iter(n for n in ("Wiek (dni)", "Aktywna", "Trudność", "Etapy", "Poziom", "AI", "Powód", "Proces rekrutacji", "Wymiar") if n not in headers)
     h = list(headers)
     for r in reqs:
         if "deleteDimension" in r:
@@ -113,12 +114,13 @@ def kinds(reqs):
     return [list(r)[0] for r in reqs]
 
 
-def test_new_layout_has_22_columns_with_level_in_front_and_key_last():
+def test_new_layout_has_24_columns_with_level_in_front_and_key_last():
     C = sheets.COL
-    assert sheets.HEADERS == NEW and len(NEW) == 22
+    assert sheets.HEADERS == NEW and len(NEW) == 24
     assert (C["Poziom"], C["Stanowisko"], C["Firma"], C["Link"], C["Wiek (dni)"], C["Trudność"], C["Aktywna"], C["Status"], C["Powód"], C["Match"],
-            C["AI"], C["Widełki / forma"], C["Wymiar"], C["Luki"], C["Notatki"], C["Klucz"]) == (1, 2, 3, 4, 5, 6, 8, 9, 10, 7, 18, 15, 16, 17, 20, 21)
-    assert sheets.MIRROR_COLS == 21 and sheets.MIRROR_LAST == "U"
+            C["AI"], C["Widełki / forma"], C["Wymiar"], C["Luki"], C["Notatki"], C["Klucz"]) == (1, 2, 3, 4, 5, 6, 9, 10, 11, 8, 19, 16, 17, 18, 21, 23)
+    assert sheets.MIRROR_COLS == 23 and sheets.MIRROR_LAST == "W"
+    assert (C["Etapy"], C["Proces rekrutacji"]) == (7, 22)      # Etapy zaraz za Trudnością, Proces rekrutacji zaraz za Notatkami
     assert "Alert" not in C
 
 
@@ -137,7 +139,7 @@ def test_migration_of_17_column_layout_inserts_seven_columns_and_moves_poziom():
     no_level = ["Dodano", "Stanowisko", "Firma", "Link", "Status", "Wysłano CV", "Rozmowa", "Następny krok", "Termin",
                 "Match", "Widełki / forma", "Kontakt", "Luki", "Dopisz do CV", "Notatki", "Źródło", "Klucz"]
     reqs = sheets.migration_requests(no_level, 5)
-    assert kinds(reqs).count("insertDimension") == 7 and "moveDimension" in kinds(reqs) and apply(no_level, reqs) == NEW
+    assert kinds(reqs).count("insertDimension") == 9 and "moveDimension" in kinds(reqs) and apply(no_level, reqs) == NEW
 
 
 def test_migration_of_intermediate_layouts_only_adds_what_is_missing():
@@ -154,7 +156,7 @@ def test_migration_of_intermediate_layouts_only_adds_what_is_missing():
 
 def test_migration_of_old_layout_deletes_alert_inserts_columns_and_moves():
     reqs = sheets.migration_requests(OLD, 5)
-    assert kinds(reqs)[0] == "deleteDimension" and kinds(reqs).count("insertDimension") == 7 and "moveDimension" in kinds(reqs)
+    assert kinds(reqs)[0] == "deleteDimension" and kinds(reqs).count("insertDimension") == 9 and "moveDimension" in kinds(reqs)
     assert reqs[0]["deleteDimension"]["range"] == {"sheetId": 5, "dimension": "COLUMNS", "startIndex": 9, "endIndex": 10}
     assert apply(OLD, reqs) == NEW
 
@@ -193,17 +195,18 @@ def test_layout_guard_blocks_writes_to_old_sheets():
 def test_offer_row_puts_values_in_the_new_columns():
     C = sheets.COL
     o = SimpleNamespace(match=0.83, company="Acme", title="Android Developer", url="https://x", gaps=["Java"],
-                        add_to_cv=["Compose"], note="uwaga", level="Senior+", difficulty=7, ai="workflow (llm)", workload="Część etatu (1/2)",
+                        add_to_cv=["Compose"], note="uwaga", level="Senior+", difficulty=7, stages=4, process="HR, techniczna", ai="workflow (llm)", workload="Część etatu (1/2)",
                         source="justjoinit", key="justjoinit:1", salary_text=lambda: "B2B 20 000–25 000")
     row = sheets.offer_row(o, "2026-10-27", 12, ";")
-    assert len(row) == 22
+    assert len(row) == 24
     assert (row[C["Match"]], row[C["Poziom"]], row[C["AI"]], row[C["Widełki / forma"]], row[C["Wymiar"]]) == (
         0.83, "Senior+", "workflow (llm)", "B2B 20 000–25 000", "Część etatu (1/2)")
     assert (row[C["Luki"]], row[C["Dopisz do CV"]], row[C["Notatki"]]) == ("Java", "Compose", "uwaga")
     assert (row[C["Klucz"]], row[C["Status"]], row[C["Dodano"]]) == ("justjoinit:1", "Do wysłania", "2026-10-27")
+    assert (row[C["Etapy"]], row[C["Proces rekrutacji"]]) == (4, "HR, techniczna")
     assert "Kontakt" not in C and "Źródło" not in C
     assert row[C["Aktywna"]] == "Tak" and row[C["Trudność"]] == 7
-    assert row[C["Wiek (dni)"]] == '=IF(COUNTIF(_widziane!$A:$A;$V12)=0;"";TODAY()-MINIFS(_widziane!$J:$J;_widziane!$A:$A;$V12))'
+    assert row[C["Wiek (dni)"]] == '=IF(COUNTIF(_widziane!$A:$A;$X12)=0;"";TODAY()-MINIFS(_widziane!$J:$J;_widziane!$A:$A;$X12))'
 
 
 def test_delete_backup_refuses_anything_but_backup_tabs():
@@ -249,7 +252,7 @@ CFG_LEVEL = __import__("yaml").safe_load(open(os.path.join(os.path.dirname(os.pa
 
 def test_level_backfill_fills_only_blank_cells_and_appends_to_notes():
     def row(firma, tytul, poziom, notatki, klucz):
-        r = [""] * 22
+        r = [""] * len(sheets.HEADERS)
         r[sheets.COL["Firma"]], r[sheets.COL["Stanowisko"]], r[sheets.COL["Poziom"]], r[sheets.COL["Notatki"]], r[sheets.COL["Klucz"]] = firma, tytul, poziom, notatki, klucz
         return r
     rows = [row("A", "Android Developer", "", "ręczna notatka", "x:1"),       # wiersz 2: opis -> Senior+ (8 lat)
@@ -268,7 +271,7 @@ CFG_AI = __import__("yaml").safe_load(open(os.path.join(os.path.dirname(os.path.
 
 def test_ai_backfill_fills_only_blank_cells_with_a_description_and_a_hit():
     def row(tytul, ai, klucz):
-        r = [""] * 22
+        r = [""] * len(sheets.HEADERS)
         r[sheets.COL["Firma"]], r[sheets.COL["Stanowisko"]], r[sheets.COL["AI"]], r[sheets.COL["Klucz"]] = "Firma", tytul, ai, klucz
         return r
     rows = [row("Android Developer", "", "x:1"), row("Android Developer", "ręcznie", "x:2"),
@@ -283,13 +286,13 @@ def test_format_rules_are_status_based_without_purple_and_rebuilt_only_when_diff
     assert [r["index"] for r in rules] == [0, 1, 2, 3]            # odrzucone > nieaktywne > w procesie > do rozważenia
     rejected, inactive, sent, consider = (r["rule"] for r in rules)
     f = lambda r: r["booleanRule"]["condition"]["values"][0]["userEnteredValue"]
-    assert f(rejected) == '=OR($J2="Odrzucone",$J2="Rezygnacja",$J2="Ghosting")'
-    assert f(inactive) == '=$I2="Nie"'
-    assert f(sent) == '=OR($J2="Wysłane",$J2="Odpowiedź",$J2="Rozmowa",$J2="Zadanie domowe",$J2="Oferta",$J2="Przyjęta")'
-    assert f(consider) == '=OR($J2="Do rozważenia",$J2="Rozważam")'
+    assert f(rejected) == '=OR($K2="Odrzucone",$K2="Rezygnacja",$K2="Ghosting")'
+    assert f(inactive) == '=$J2="Nie"'
+    assert f(sent) == '=OR($K2="Wysłane",$K2="Odpowiedź",$K2="Rozmowa",$K2="Zadanie domowe",$K2="Oferta",$K2="Przyjęta")'
+    assert f(consider) == '=OR($K2="Do rozważenia",$K2="Rozważam")'
     assert f(sheets.format_requests(7, [], ";")[0]["addConditionalFormatRule"]["rule"]).count(";") == 2        # locale pl
-    assert rejected["ranges"] == [{"sheetId": 7, "startRowIndex": 1, "startColumnIndex": 0, "endColumnIndex": 22}]
-    assert sheets.format_requests(7, [], width=sheets.MIRROR_COLS)[-1]["addConditionalFormatRule"]["rule"]["ranges"][0]["endColumnIndex"] == 21
+    assert rejected["ranges"] == [{"sheetId": 7, "startRowIndex": 1, "startColumnIndex": 0, "endColumnIndex": 24}]
+    assert sheets.format_requests(7, [], width=sheets.MIRROR_COLS)[-1]["addConditionalFormatRule"]["rule"]["ranges"][0]["endColumnIndex"] == 23
     assert rejected["booleanRule"]["format"]["textFormat"]["strikethrough"] is True
     for r in (rejected, inactive, sent, consider):             # żadnych fioletów: niebieski nigdy nie przewyższa zieleni
         bg = r["booleanRule"]["format"]["backgroundColor"]
@@ -307,7 +310,7 @@ def test_old_rules_purple_senior_plus_and_age_colors_are_all_dropped_before_the_
 
 def test_workload_backfill_fills_blank_cells_only_and_leaves_notes_alone():
     def row(wymiar, klucz):
-        r = [""] * 22
+        r = [""] * len(sheets.HEADERS)
         r[sheets.COL["Stanowisko"]], r[sheets.COL["Wymiar"]], r[sheets.COL["Klucz"]] = "Android Developer", wymiar, klucz
         return r
     rows = [row("", "x:1"), row("Zlecenie / kontrakt", "x:2"), row("", "x:3"), row("", "x:4"), row("", "x:5")]
@@ -317,7 +320,7 @@ def test_workload_backfill_fills_blank_cells_only_and_leaves_notes_alone():
 
 def test_age_backfill_fills_blank_age_formula_and_active_only_for_rows_with_a_key():
     def row(firma, klucz, wiek="", aktywna=""):
-        r = [""] * 22
+        r = [""] * len(sheets.HEADERS)
         r[sheets.COL["Firma"]], r[sheets.COL["Klucz"]], r[sheets.COL["Wiek (dni)"]], r[sheets.COL["Aktywna"]] = firma, klucz, wiek, aktywna
         return r
     rows = [row("A", "x:1"), row("B", "x:2", "5", "Zniknęła 2026-10-01"), row("C", ""), row("", ""), row("D", "x:4", "", "Tak")]
@@ -329,7 +332,7 @@ def test_age_backfill_fills_blank_age_formula_and_active_only_for_rows_with_a_ke
 def test_activity_updates_touch_only_changed_cells_and_keep_the_first_disappearance_date():
     from seen import Summary
     def row(klucz, aktywna, notatki):
-        r = [""] * 22
+        r = [""] * len(sheets.HEADERS)
         r[sheets.COL["Firma"]], r[sheets.COL["Klucz"]], r[sheets.COL["Aktywna"]], r[sheets.COL["Notatki"]] = "F", klucz, aktywna, notatki
         return r
     rows = [row("a", "Tak", "Poziom: x"), row("b", "Tak", ""), row("c", "Zniknęła 2026-10-01", ""), row("d", "", "stara. Odświeżana 2×"),
@@ -345,7 +348,7 @@ def test_difficulty_backfill_fills_only_blank_cells_and_works_without_a_descript
     C = sheets.COL
     cfg = {"level": CFG_LEVEL, "difficulty": __import__("yaml").safe_load(open("config.yaml", encoding="utf-8"))["difficulty"]}
     def row(titel, trud, poziom, klucz):
-        r = [""] * 22
+        r = [""] * len(sheets.HEADERS)
         r[sheets.COL["Firma"]], r[sheets.COL["Stanowisko"]], r[C["Poziom"]], r[C["Trudność"]], r[C["Klucz"]] = "Firma", titel, poziom, trud, klucz
         return r
     rows = [row("Android Developer", "", "Mid", "a"), row("Android Developer", "5", "Mid", "b"),
@@ -365,7 +368,7 @@ def test_sort_rank_orders_sent_then_considering_then_rest_then_inactive_then_rej
     C = sheets.COL
 
     def row(status="", active="Tak", firma="F"):
-        r = [""] * 22
+        r = [""] * len(sheets.HEADERS)
         r[C["Firma"]], r[C["Status"]], r[C["Aktywna"]] = firma, status, active
         return r
     ranks = [sheets.sort_rank(row(s, a)) for s, a in (("Wysłane", "Tak"), ("Rozmowa", "Tak"), ("Rozważam", "Tak"), ("Do rozważenia", "Tak"),
@@ -391,3 +394,20 @@ def test_validations_are_cleared_first_and_aktywna_accepts_only_tak_nie():
     assert set(by_col) == {C["Status"], C["Poziom"], C["Aktywna"]} and C["Wiek (dni)"] not in by_col
     assert [v["userEnteredValue"] for v in by_col[C["Aktywna"]]["condition"]["values"]] == ["Tak", "Nie"] and by_col[C["Aktywna"]]["strict"] is True
     assert by_col[C["Status"]]["strict"] is False
+
+
+def test_migration_of_the_previous_live_layout_only_inserts_etapy_and_proces():
+    reqs = sheets.migration_requests(BASE, 5)
+    assert kinds(reqs) == ["insertDimension"] * 2 and apply(BASE, reqs) == NEW
+    assert sheets.migration_requests(NEW, 5) == []
+
+
+def test_recruitment_backfill_fills_only_blank_cells_with_a_detected_process():
+    def row(etapy, proces, klucz):
+        r = [""] * len(sheets.HEADERS)
+        r[sheets.COL["Etapy"]], r[sheets.COL["Proces rekrutacji"]], r[sheets.COL["Klucz"]] = etapy, proces, klucz
+        return r
+    desc = {"a": "proces rekrutacji: rozmowa z hr, rozmowa techniczna, live coding", "b": "proces rekrutacji: 2 etapy, rozmowa techniczna",
+            "c": "brak opisu procesu", "d": "proces rekrutacji: rozmowa z hr, rozmowa techniczna, live coding"}
+    rows = [row("", "", "a"), row("", "", "b"), row("", "", "c"), row("5", "moje", "d"), row("", "", "e")]
+    assert sheets.recruitment_backfill(rows, desc) == [(2, 3, "HR, techniczna, live coding"), (3, 2, "techniczna")]

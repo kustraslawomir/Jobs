@@ -9,11 +9,12 @@ import ai_flag
 import employment
 import difficulty
 import level
+import recruitment
 import seen
 
-HEADERS = ["Dodano", "Poziom", "Stanowisko", "Firma", "Link", "Wiek (dni)", "Trudność", "Match", "Aktywna", "Status", "Powód", "Wysłano CV", "Rozmowa",
+HEADERS = ["Dodano", "Poziom", "Stanowisko", "Firma", "Link", "Wiek (dni)", "Trudność", "Etapy", "Match", "Aktywna", "Status", "Powód", "Wysłano CV", "Rozmowa",
            "Następny krok", "Termin", "Widełki / forma", "Wymiar", "Luki", "AI", "Dopisz do CV",
-           "Notatki", "Klucz"]
+           "Notatki", "Proces rekrutacji", "Klucz"]
 COL = {h: i for i, h in enumerate(HEADERS)}           # 0-based
 STATUSES = ["Do wysłania", "Do rozważenia", "Rozważam", "Wysłane", "Odpowiedź", "Rozmowa", "Zadanie domowe", "Oferta",
             "Przyjęta", "Odrzucone", "Rezygnacja", "Ghosting"]
@@ -28,7 +29,7 @@ def col_letter(i: int) -> str:
 
 
 SEEN_TAB = "_widziane"
-MIRROR_COLS = COL["Notatki"] + 1   # A:P z Ofert (do Notatek, bez Źródło i Klucz)
+MIRROR_COLS = COL["Proces rekrutacji"] + 1   # z Ofert do Procesu rekrutacji (bez Klucza)
 MIRROR_LAST = col_letter(MIRROR_COLS - 1)
 SOURCE_HEADERS = ["Źródło", "Data", "Pobrane", "Nowe", "Błąd"]
 SKILL_HEADERS = ["Kategoria", "Keyword", "Wariant 2", "Wariant 3", "Wariant 4", "Mam?", "Waga 1-3", "Komentarz"]
@@ -344,8 +345,8 @@ def migration_requests(headers: list[str], sheet_id: int) -> list[dict]:
             reqs.append({"deleteDimension": {"range": dim(i)}})
             h.pop(i)
 
-    for name, anchor in (("Wiek (dni)", "Link"), ("Aktywna", "Wiek (dni)"), ("Trudność", "Aktywna"),       # puste kolumny wstawiane w tej kolejności
-                         ("Poziom", "Match"), ("AI", "Poziom"), ("Powód", "Status")):
+    for name, anchor in (("Wiek (dni)", "Link"), ("Aktywna", "Wiek (dni)"), ("Trudność", "Aktywna"), ("Etapy", "Trudność"),       # puste kolumny wstawiane w tej kolejności
+                         ("Poziom", "Match"), ("AI", "Poziom"), ("Powód", "Status"), ("Proces rekrutacji", "Notatki")):
         if name not in h and anchor in h:
             i = h.index(anchor) + 1
             reqs.append({"insertDimension": {"range": dim(i), "inheritFromBefore": False}})
@@ -364,7 +365,8 @@ def migration_requests(headers: list[str], sheet_id: int) -> list[dict]:
     place_after("Poziom", "Dodano")                                      # Poziom na samym przodzie: B = Poziom, C = Stanowisko, D = Firma
     place_after("Stanowisko", "Poziom")
     place_after("Trudność", "Wiek (dni)")                                # Wiek, Trudność, Aktywna, Status
-    place_after("Match", "Trudność")                                     # Match zaraz po Trudności
+    place_after("Etapy", "Trudność")                                     # Etapy zaraz po Trudności
+    place_after("Match", "Etapy")                                        # Match zaraz po Etapach
     place_after("Aktywna", "Match")
     place_after("Widełki / forma", "Termin")                             # Termin, Widełki, Wymiar, AI, Kontakt
     if "Wymiar" not in h and "Widełki / forma" in h:                   # pusta kolumna zaraz za Widełkami
@@ -407,7 +409,7 @@ def migrate(sh, cfg, today: str | None = None):
         sh.batch_update({"requests": stale + drop + reqs})   # widoki mają stare indeksy kolumn: wracają z init()
         row1 = ws.row_values(1)                            # insertDimension wstawia puste kolumny: nagłówki dopisujemy od razu
         for i, name in enumerate(HEADERS):
-            if name in ("Wiek (dni)", "Aktywna", "Poziom", "Trudność", "AI", "Powód", "Wymiar") and name not in row1:
+            if name in ("Wiek (dni)", "Aktywna", "Poziom", "Trudność", "Etapy", "AI", "Powód", "Wymiar", "Proces rekrutacji") and name not in row1:
                 ws.update_cell(1, i + 1, name)
         print(f"Migracja: {len(reqs)} operacji na kolumnach, usunięto {len(stale)} widoków filtrów.")
     init(sh, cfg)                                       # idempotentne: walidacje, formaty, widoki, lustro (także po przerwanej migracji)
@@ -490,6 +492,23 @@ def workload_backfill(rows: list[list[str]], descriptions: dict[str, str]) -> li
     return out
 
 
+def recruitment_backfill(rows: list[list[str]], descriptions: dict[str, str]) -> list[tuple[int, int | None, str]]:
+    """Dla wierszy z opisem w _opisy: (numer wiersza, Etapy albo None, Proces rekrutacji albo "") tylko dla pustych komórek,
+    w których detektor coś znalazł. Wypełnionych (także ręcznie) nie ruszamy."""
+    out = []
+    for n, r in enumerate(rows, start=2):
+        r = r + [""] * len(HEADERS)
+        desc = descriptions.get(r[COL["Klucz"]], "")
+        if not desc.strip() or (r[COL["Etapy"]].strip() and r[COL["Proces rekrutacji"]].strip()):
+            continue
+        stages, found = recruitment.assess(desc)
+        stages = stages if not r[COL["Etapy"]].strip() else None
+        process = recruitment.process_text(found) if not r[COL["Proces rekrutacji"]].strip() else ""
+        if stages is not None or process:
+            out.append((n, stages, process))
+    return out
+
+
 def age_backfill(rows: list[list[str]], sep: str) -> list[tuple[int, str, str | None]]:
     """Dla wierszy Ofert z danymi: (numer wiersza, formuła Wieku albo None, "Tak" albo None) tylko dla pustych komórek."""
     out = []
@@ -528,6 +547,12 @@ def backfill_columns(sh, cfg, ws, locale: str = "en_US"):
     workloads = workload_backfill(rows, descriptions)
     for n, value in workloads:
         data.append({"range": f"{col_letter(COL['Wymiar'])}{n}", "values": [[value]]})
+    recruiting = recruitment_backfill(rows, descriptions)
+    for n, stages, process in recruiting:
+        if stages is not None:
+            data.append({"range": f"{col_letter(COL['Etapy'])}{n}", "values": [[stages]]})
+        if process:
+            data.append({"range": f"{col_letter(COL['Proces rekrutacji'])}{n}", "values": [[process]]})
     if data:
         ws.batch_update(data, value_input_option="RAW")
     ages = age_backfill(rows, arg_separator(locale))
@@ -549,6 +574,7 @@ def backfill_columns(sh, cfg, ws, locale: str = "en_US"):
     print("Poziom: uzupełniono", len(levels), "wierszy:", dict(Counter(u[1] for u in levels)))
     print("Trudność: uzupełniono", len(diffs), "wierszy, rozkład:", dict(sorted(Counter(v for _, v, _ in diffs).items())))
     print("AI: uzupełniono", len(ais), "wierszy:", dict(Counter(v.split(" (")[0] for _, v in ais)))
+    print("Etapy / Proces rekrutacji: uzupełniono", len(recruiting), "wierszy.")
     print("Wymiar: uzupełniono", len(workloads), "wierszy:", dict(Counter(v.split(" (")[0] for _, v in workloads)))
 
 
@@ -894,6 +920,8 @@ def offer_row(o, today: str, row_number: int | None = None, sep: str = ",") -> l
     row[COL["Match"]] = round(o.match, 2) if o.match is not None else ""
     row[COL["Poziom"]] = getattr(o, "level", "")
     row[COL["Trudność"]] = getattr(o, "difficulty", None) if getattr(o, "difficulty", None) is not None else ""
+    row[COL["Etapy"]] = getattr(o, "stages", None) if getattr(o, "stages", None) is not None else ""
+    row[COL["Proces rekrutacji"]] = getattr(o, "process", "")
     row[COL["AI"]] = getattr(o, "ai", "")
     row[COL["Wymiar"]] = getattr(o, "workload", "")
     row[COL["Widełki / forma"]] = o.salary_text()

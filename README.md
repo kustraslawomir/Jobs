@@ -108,7 +108,7 @@ Niektóre portale (teraz czyjesteldorado.pl) blokują adresy IP serwerowni GitHu
 
 ## Układ kolumn Ofert i migracja
 
-Kolejność kolumn (A–V): Dodano, Poziom, Stanowisko, Firma, Link (hiperłącze pokazujące samą domenę), Wiek (dni), Trudność, Match, Aktywna, Status, Powód, Wysłano CV, Rozmowa, Następny krok, Termin, Widełki / forma, Wymiar, Luki, AI, Dopisz do CV, Notatki, Klucz (ukryta; źródło to jego przedrostek). Kolumn Alert, Kontakt i Źródło już nie ma.
+Kolejność kolumn (A–X): Dodano, Poziom, Stanowisko, Firma, Link (hiperłącze pokazujące samą domenę), Wiek (dni), Trudność, Etapy, Match, Aktywna, Status, Powód, Wysłano CV, Rozmowa, Następny krok, Termin, Widełki / forma, Wymiar, Luki, AI, Dopisz do CV, Notatki, Proces rekrutacji, Klucz (ukryta; źródło to jego przedrostek). Kolumn Alert, Kontakt i Źródło już nie ma.
 
 Skrypt nie zapisuje do arkusza, którego nagłówki Ofert różnią się od tego układu (zatrzymuje się z błędem), żeby dane nie trafiły do złych kolumn. Stary arkusz przestawia tryb **migrate** (Actions → Run workflow → `migrate`, lokalnie `python main.py --migrate`):
 - robi kopię zakładki jako `Oferty_backup_<data>`,
@@ -117,6 +117,9 @@ Skrypt nie zapisuje do arkusza, którego nagłówki Ofert różnią się od tego
 - jest idempotentna: w nowym układzie nic nie robi, w układzie pośrednim kończy brakujące kroki,
 - odtwarza widoki filtrów (A:X, w tym „AI”, „Część etatu / zlecenia”, „Świeże”, „Spokojne” i „Mid”), dodaje listę wartości, przebudowuje kolorowanie wierszy w Ofertach i Aplikowane (odrzucone: ciemnoszare i przekreślone > nieaktywne: jasnoszare > wysłane / w procesie: jasnozielone > Do rozważenia / Rozważam: jasnożółte; poza tym nic nie jest kolorowane), odświeża Aplikowane (A:V).
 Kopię (`Oferty_backup_*`) usuń ręcznie po sprawdzeniu arkusza.
+
+## Etapy i Proces rekrutacji
+Gdy ogłoszenie samo opisuje proces („Proces rekrutacji: …”, „Recruitment process: …”), kolumna **Etapy** (zaraz za Trudnością) dostaje liczbę etapów, a **Proces rekrutacji** (zaraz za Notatkami) ich listę w kolejności z tekstu, np. „HR, techniczna, live coding, zespół”. Liczba jest wpisana tylko wtedy, gdy ogłoszenie ją podaje („3 etapy”, „trzyetapowy”) albo wylicza co najmniej trzy rozpoznane etapy; przy braku pewności Etapy zostają puste, a lista etapów i tak się wpisuje, jeśli coś rozpoznano. Zgody RODO nie są traktowane jako opis procesu. Rozpoznawane etapy: HR, techniczna, live coding, zadanie domowe, system design, zespół, manager. Logika jest w `recruitment.py`, a istniejące wiersze z opisem w `_opisy` uzupełnia migracja (tylko puste komórki).
 
 ## Trudność (0–10)
 Kolumna **Trudność** (zaraz za Poziomem) to ocena z samego ogłoszenia: punkty za poziom (Mid 2, Senior 4, Senior+ 6, „?” 3), za sygnały trudnej rozmowy i roli (live coding i LeetCode po 3, system design 1,5, zadanie domowe, 4+ etapy, prowadzenie zespołu, architektura, techniczne przywództwo po 1; zaprzeczenia typu „no live coding” się nie liczą) i do 2 punktów za presję (szybkie tempo, dyżury, startup). Wagi są w `config.yaml` (sekcja `difficulty`), powody w Notatkach („Trudność 8/10: Mid, live coding, …”). Widok filtra **Spokojne** pokazuje „Do wysłania” z trudnością ≤ 4. Nic nie zmienia statusu automatycznie – decyzję o rezygnacji podejmujesz sam.
