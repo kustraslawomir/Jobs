@@ -15,12 +15,12 @@ def test_new_offers_are_sorted_by_match_descending_with_empty_match_last():
 
 def test_mirror_formulas_use_semicolons_for_polish_locale():
     a1, a2 = sheets.mirror_formulas(sheets.arg_separator("pl_PL"))
-    assert a1 == "={Oferty!A1:W1}"                                   # A:W = Dodano ... Proces rekrutacji (bez Klucza)
-    c = ';Oferty!K2:K<>"";Oferty!K2:K<>"Do wysłania"'
-    rank = ('ARRAYFORMULA(IF((Oferty!K2:K="Odrzucone")+(Oferty!K2:K="Rezygnacja")+(Oferty!K2:K="Ghosting");3;'
-            'IF(Oferty!J2:J="Nie";2;IF((Oferty!K2:K="Do rozważenia")+(Oferty!K2:K="Rozważam");1;0))))')
-    assert a2 == (f'=IFERROR(SORT(FILTER(Oferty!A2:W{c});FILTER({rank}{c});TRUE;'
-                  f'FILTER(Oferty!M2:M{c});FALSE);"Jeszcze nic nie wysłane")')   # grupa 0-3, potem po Wysłano CV (M)
+    assert a1 == "={Oferty!A1:X1}"                                   # A:W = Dodano ... Proces rekrutacji (bez Klucza)
+    c = ';Oferty!L2:L<>"";Oferty!L2:L<>"Do wysłania"'
+    rank = ('ARRAYFORMULA(IF((Oferty!L2:L="Odrzucone")+(Oferty!L2:L="Rezygnacja")+(Oferty!L2:L="Ghosting");3;'
+            'IF(Oferty!K2:K="Nie";2;IF((Oferty!L2:L="Do rozważenia")+(Oferty!L2:L="Rozważam");1;0))))')
+    assert a2 == (f'=IFERROR(SORT(FILTER(Oferty!A2:X{c});FILTER({rank}{c});TRUE;'
+                  f'FILTER(Oferty!N2:N{c});FALSE);"Jeszcze nic nie wysłane")')   # grupa 0-3, potem po Wysłano CV (N)
 
 
 def test_mirror_formulas_use_commas_for_en_us():
@@ -34,7 +34,7 @@ def test_filter_views_cover_whole_columns_and_skip_existing_ones():
     titles = {"Do przejrzenia", "Najnowsze", "AI", "Część etatu / zlecenia", "Świeże", "Spokojne", "Mid", "Nieaktywne"}
     assert set(f) == titles == set(sheets.FILTER_VIEW_TITLES)
     todo = f["Do przejrzenia"]
-    assert todo["range"] == {"sheetId": 7, "startColumnIndex": 0, "endColumnIndex": 24}       # A:X, bez ograniczenia wierszy
+    assert todo["range"] == {"sheetId": 7, "startColumnIndex": 0, "endColumnIndex": 25}       # A:Y, bez ograniczenia wierszy
     assert todo["sortSpecs"] == [{"dimensionIndex": C["Match"], "sortOrder": "DESCENDING"}]
     assert todo["criteria"] == {str(C["Status"]): {"condition": {"type": "TEXT_EQ", "values": [{"userEnteredValue": "Do wysłania"}]}},
                                 str(C["Poziom"]): {"hiddenValues": ["Senior+"]}, str(C["Aktywna"]): {"hiddenValues": ["Nie"]}}
@@ -64,9 +64,10 @@ def test_blank_sheet_detection():
     assert not sheets.is_blank([["", ""], ["", "x"]])
 
 
-NEW = ["Dodano", "Poziom", "Stanowisko", "Firma", "Link", "Wiek (dni)", "Trudność", "Etapy", "Match", "Aktywna", "Status", "Powód", "Wysłano CV", "Rozmowa", "Następny krok",
+NEW = ["Dodano", "Poziom", "Stanowisko", "Firma", "Link", "Wiek (dni)", "Trudność", "Etapy", "Match", "Score", "Aktywna", "Status", "Powód", "Wysłano CV", "Rozmowa", "Następny krok",
        "Termin", "Widełki / forma", "Wymiar", "Luki", "AI", "Dopisz do CV", "Notatki", "Proces rekrutacji", "Klucz"]
-BASE = [h for h in NEW if h not in ("Etapy", "Proces rekrutacji")]            # poprzedni układ (22 kolumny), od którego startuje ta migracja
+BASE = [h for h in NEW if h not in ("Etapy", "Proces rekrutacji", "Score")]         # układ sprzed Etapów (22 kolumny)
+PREV3 = [h for h in NEW if h != "Score"]                                              # poprzedni układ (24 kolumny), od którego startuje ta migracja, od którego startuje ta migracja
 NO_LEVEL = [h for h in BASE if h not in ("Wiek (dni)", "Aktywna", "Poziom", "Trudność", "AI", "Powód", "Wymiar")]   # 17 kolumn, sprzed Poziomu
 NO_AGE = [h for h in BASE if h not in ("Wiek (dni)", "Aktywna", "Trudność", "Powód")]                             # z Poziomem, AI i Wymiarem
 NO_WYMIAR = [h for h in BASE if h != "Wymiar"]
@@ -80,7 +81,7 @@ OLD = ["Dodano", "Stanowisko", "Firma", "Link", "Status", "Wysłano CV", "Rozmow
 
 def apply(headers, reqs):
     """Symulacja semantyki API: deleteDimension usuwa kolumnę, insertDimension wstawia pustą (nagłówki dopisuje potem migrate po nazwach; tu nazwy dostają puste kolumny w kolejności wstawiania), moveDimension wstawia kolumnę PRZED destinationIndex układu wyjściowego."""
-    missing = iter(n for n in ("Wiek (dni)", "Aktywna", "Trudność", "Etapy", "Poziom", "AI", "Powód", "Proces rekrutacji", "Wymiar") if n not in headers)
+    missing = iter(n for n in ("Wiek (dni)", "Aktywna", "Trudność", "Etapy", "Score", "Poziom", "AI", "Powód", "Proces rekrutacji", "Wymiar") if n not in headers)
     h = list(headers)
     for r in reqs:
         if "deleteDimension" in r:
@@ -114,13 +115,13 @@ def kinds(reqs):
     return [list(r)[0] for r in reqs]
 
 
-def test_new_layout_has_24_columns_with_level_in_front_and_key_last():
+def test_new_layout_has_25_columns_with_level_in_front_and_key_last():
     C = sheets.COL
-    assert sheets.HEADERS == NEW and len(NEW) == 24
+    assert sheets.HEADERS == NEW and len(NEW) == 25
     assert (C["Poziom"], C["Stanowisko"], C["Firma"], C["Link"], C["Wiek (dni)"], C["Trudność"], C["Aktywna"], C["Status"], C["Powód"], C["Match"],
-            C["AI"], C["Widełki / forma"], C["Wymiar"], C["Luki"], C["Notatki"], C["Klucz"]) == (1, 2, 3, 4, 5, 6, 9, 10, 11, 8, 19, 16, 17, 18, 21, 23)
-    assert sheets.MIRROR_COLS == 23 and sheets.MIRROR_LAST == "W"
-    assert (C["Etapy"], C["Proces rekrutacji"]) == (7, 22)      # Etapy zaraz za Trudnością, Proces rekrutacji zaraz za Notatkami
+            C["AI"], C["Widełki / forma"], C["Wymiar"], C["Luki"], C["Notatki"], C["Klucz"]) == (1, 2, 3, 4, 5, 6, 10, 11, 12, 8, 20, 17, 18, 19, 22, 24)
+    assert sheets.MIRROR_COLS == 24 and sheets.MIRROR_LAST == "X"
+    assert (C["Etapy"], C["Score"], C["Proces rekrutacji"]) == (7, 9, 23)      # Etapy zaraz za Trudnością, Proces rekrutacji zaraz za Notatkami
     assert "Alert" not in C
 
 
@@ -139,7 +140,7 @@ def test_migration_of_17_column_layout_inserts_seven_columns_and_moves_poziom():
     no_level = ["Dodano", "Stanowisko", "Firma", "Link", "Status", "Wysłano CV", "Rozmowa", "Następny krok", "Termin",
                 "Match", "Widełki / forma", "Kontakt", "Luki", "Dopisz do CV", "Notatki", "Źródło", "Klucz"]
     reqs = sheets.migration_requests(no_level, 5)
-    assert kinds(reqs).count("insertDimension") == 9 and "moveDimension" in kinds(reqs) and apply(no_level, reqs) == NEW
+    assert kinds(reqs).count("insertDimension") == 10 and "moveDimension" in kinds(reqs) and apply(no_level, reqs) == NEW
 
 
 def test_migration_of_intermediate_layouts_only_adds_what_is_missing():
@@ -156,7 +157,7 @@ def test_migration_of_intermediate_layouts_only_adds_what_is_missing():
 
 def test_migration_of_old_layout_deletes_alert_inserts_columns_and_moves():
     reqs = sheets.migration_requests(OLD, 5)
-    assert kinds(reqs)[0] == "deleteDimension" and kinds(reqs).count("insertDimension") == 9 and "moveDimension" in kinds(reqs)
+    assert kinds(reqs)[0] == "deleteDimension" and kinds(reqs).count("insertDimension") == 10 and "moveDimension" in kinds(reqs)
     assert reqs[0]["deleteDimension"]["range"] == {"sheetId": 5, "dimension": "COLUMNS", "startIndex": 9, "endIndex": 10}
     assert apply(OLD, reqs) == NEW
 
@@ -198,7 +199,7 @@ def test_offer_row_puts_values_in_the_new_columns():
                         add_to_cv=["Compose"], note="uwaga", level="Senior+", difficulty=7, stages=4, process="HR, techniczna", ai="workflow (llm)", workload="Część etatu (1/2)",
                         source="justjoinit", key="justjoinit:1", salary_text=lambda: "B2B 20 000–25 000")
     row = sheets.offer_row(o, "2026-10-27", 12, ";")
-    assert len(row) == 24
+    assert len(row) == 25
     assert (row[C["Match"]], row[C["Poziom"]], row[C["AI"]], row[C["Widełki / forma"]], row[C["Wymiar"]]) == (
         0.83, "Senior+", "workflow (llm)", "B2B 20 000–25 000", "Część etatu (1/2)")
     assert (row[C["Luki"]], row[C["Dopisz do CV"]], row[C["Notatki"]]) == ("Java", "Compose", "uwaga")
@@ -206,7 +207,7 @@ def test_offer_row_puts_values_in_the_new_columns():
     assert (row[C["Etapy"]], row[C["Proces rekrutacji"]]) == (4, "HR, techniczna")
     assert "Kontakt" not in C and "Źródło" not in C
     assert row[C["Aktywna"]] == "Tak" and row[C["Trudność"]] == 7
-    assert row[C["Wiek (dni)"]] == '=IF(COUNTIF(_widziane!$A:$A;$X12)=0;"";TODAY()-MINIFS(_widziane!$J:$J;_widziane!$A:$A;$X12))'
+    assert row[C["Wiek (dni)"]] == '=IF(COUNTIF(_widziane!$A:$A;$Y12)=0;"";TODAY()-MINIFS(_widziane!$J:$J;_widziane!$A:$A;$Y12))'
 
 
 def test_delete_backup_refuses_anything_but_backup_tabs():
@@ -286,13 +287,13 @@ def test_format_rules_are_status_based_without_purple_and_rebuilt_only_when_diff
     assert [r["index"] for r in rules] == [0, 1, 2, 3]            # odrzucone > nieaktywne > w procesie > do rozważenia
     rejected, inactive, sent, consider = (r["rule"] for r in rules)
     f = lambda r: r["booleanRule"]["condition"]["values"][0]["userEnteredValue"]
-    assert f(rejected) == '=OR($K2="Odrzucone",$K2="Rezygnacja",$K2="Ghosting")'
-    assert f(inactive) == '=$J2="Nie"'
-    assert f(sent) == '=OR($K2="Wysłane",$K2="Odpowiedź",$K2="Rozmowa",$K2="Zadanie domowe",$K2="Oferta",$K2="Przyjęta")'
-    assert f(consider) == '=OR($K2="Do rozważenia",$K2="Rozważam")'
+    assert f(rejected) == '=OR($L2="Odrzucone",$L2="Rezygnacja",$L2="Ghosting")'
+    assert f(inactive) == '=$K2="Nie"'
+    assert f(sent) == '=OR($L2="Wysłane",$L2="Odpowiedź",$L2="Rozmowa",$L2="Zadanie domowe",$L2="Oferta",$L2="Przyjęta")'
+    assert f(consider) == '=OR($L2="Do rozważenia",$L2="Rozważam")'
     assert f(sheets.format_requests(7, [], ";")[0]["addConditionalFormatRule"]["rule"]).count(";") == 2        # locale pl
-    assert rejected["ranges"] == [{"sheetId": 7, "startRowIndex": 1, "startColumnIndex": 0, "endColumnIndex": 24}]
-    assert sheets.format_requests(7, [], width=sheets.MIRROR_COLS)[-1]["addConditionalFormatRule"]["rule"]["ranges"][0]["endColumnIndex"] == 23
+    assert rejected["ranges"] == [{"sheetId": 7, "startRowIndex": 1, "startColumnIndex": 0, "endColumnIndex": 25}]
+    assert sheets.format_requests(7, [], width=sheets.MIRROR_COLS)[-1]["addConditionalFormatRule"]["rule"]["ranges"][0]["endColumnIndex"] == 24
     assert rejected["booleanRule"]["format"]["textFormat"]["strikethrough"] is True
     for r in (rejected, inactive, sent, consider):             # żadnych fioletów: niebieski nigdy nie przewyższa zieleni
         bg = r["booleanRule"]["format"]["backgroundColor"]
@@ -396,9 +397,11 @@ def test_validations_are_cleared_first_and_aktywna_accepts_only_tak_nie():
     assert by_col[C["Status"]]["strict"] is False
 
 
-def test_migration_of_the_previous_live_layout_only_inserts_etapy_and_proces():
+def test_migration_of_the_previous_live_layout_only_inserts_score():
+    reqs = sheets.migration_requests(PREV3, 5)
+    assert kinds(reqs) == ["insertDimension"] and apply(PREV3, reqs) == NEW
     reqs = sheets.migration_requests(BASE, 5)
-    assert kinds(reqs) == ["insertDimension"] * 2 and apply(BASE, reqs) == NEW
+    assert kinds(reqs).count("insertDimension") == 3 and apply(BASE, reqs) == NEW      # Etapy, Score, Proces rekrutacji
     assert sheets.migration_requests(NEW, 5) == []
 
 
@@ -411,3 +414,23 @@ def test_recruitment_backfill_fills_only_blank_cells_with_a_detected_process():
             "c": "brak opisu procesu", "d": "proces rekrutacji: rozmowa z hr, rozmowa techniczna, live coding"}
     rows = [row("", "", "a"), row("", "", "b"), row("", "", "c"), row("5", "moje", "d"), row("", "", "e")]
     assert sheets.recruitment_backfill(rows, desc) == [(2, 3, "HR, techniczna, live coding"), (3, 2, "techniczna")]
+
+
+def test_score_updates_recompute_everything_and_skip_unchanged_cells():
+    import yaml
+    cfg = yaml.safe_load(open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "config.yaml")))
+    C = sheets.COL
+
+    def row(firma, status, match="80%", wiek="3", score="", aktywna="Tak", level="Mid", trud="2"):
+        r = [""] * len(sheets.HEADERS)
+        r[C["Firma"]], r[C["Stanowisko"]], r[C["Status"]], r[C["Match"]], r[C["Wiek (dni)"]], r[C["Score"]] = firma, "Android", status, match, wiek, score
+        r[C["Aktywna"]], r[C["Poziom"]], r[C["Trudność"]] = aktywna, level, trud
+        return r
+    rows = [row("Acme", "Do wysłania"), row("Acme", "Ghosting"), row("Acme", "Do wysłania", score="9.9"), row("", "", match=""), row("Beta", "Odrzucone")]
+    out = {n: (v, why) for n, v, why in sheets.score_updates(rows, cfg)}
+    assert set(out) == {2, 3, 4, 6}                                  # wiersz 5 jest pusty
+    assert out[3][0] == 0.0 and out[6][0] == 0.0                     # zamknięte = 0.0
+    assert any("firma: 1× odmowa" in w for w in out[2][1])          # kara za ghosting w tej samej firmie
+    again = [row("Acme", "Do wysłania", score=f"{out[2][0]}")]
+    again[0][C["Firma"]] = "Gamma"                                   # bez historii firmy wynik jest inny, więc zmiana jest wykryta
+    assert sheets.score_updates(again, cfg)[0][1] != out[2][0]

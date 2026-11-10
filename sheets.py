@@ -10,9 +10,10 @@ import employment
 import difficulty
 import level
 import recruitment
+import score
 import seen
 
-HEADERS = ["Dodano", "Poziom", "Stanowisko", "Firma", "Link", "Wiek (dni)", "Trudność", "Etapy", "Match", "Aktywna", "Status", "Powód", "Wysłano CV", "Rozmowa",
+HEADERS = ["Dodano", "Poziom", "Stanowisko", "Firma", "Link", "Wiek (dni)", "Trudność", "Etapy", "Match", "Score", "Aktywna", "Status", "Powód", "Wysłano CV", "Rozmowa",
            "Następny krok", "Termin", "Widełki / forma", "Wymiar", "Luki", "AI", "Dopisz do CV",
            "Notatki", "Proces rekrutacji", "Klucz"]
 COL = {h: i for i, h in enumerate(HEADERS)}           # 0-based
@@ -175,6 +176,8 @@ def mirror_format_requests(sid: int, offers_index: int | None = None) -> list[di
                         "cell": {"userEnteredFormat": {"numberFormat": {"type": "PERCENT", "pattern": "0%"}}},
                         "fields": "userEnteredFormat.numberFormat"}},        {"repeatCell": {"range": {"sheetId": sid, "startRowIndex": 1, "startColumnIndex": COL["Etapy"], "endColumnIndex": COL["Etapy"] + 1},
                         "cell": {"userEnteredFormat": {"numberFormat": {"type": "NUMBER", "pattern": "0"}}},
+                        "fields": "userEnteredFormat.numberFormat"}},        {"repeatCell": {"range": {"sheetId": sid, "startRowIndex": 1, "startColumnIndex": COL["Score"], "endColumnIndex": COL["Score"] + 1},
+                        "cell": {"userEnteredFormat": {"numberFormat": {"type": "NUMBER", "pattern": "0.0"}}},
                         "fields": "userEnteredFormat.numberFormat"}},
     ]
 
@@ -347,7 +350,7 @@ def migration_requests(headers: list[str], sheet_id: int) -> list[dict]:
             reqs.append({"deleteDimension": {"range": dim(i)}})
             h.pop(i)
 
-    for name, anchor in (("Wiek (dni)", "Link"), ("Aktywna", "Wiek (dni)"), ("Trudność", "Aktywna"), ("Etapy", "Trudność"),       # puste kolumny wstawiane w tej kolejności
+    for name, anchor in (("Wiek (dni)", "Link"), ("Aktywna", "Wiek (dni)"), ("Trudność", "Aktywna"), ("Etapy", "Trudność"), ("Score", "Match"),       # puste kolumny wstawiane w tej kolejności
                          ("Poziom", "Match"), ("AI", "Poziom"), ("Powód", "Status"), ("Proces rekrutacji", "Notatki")):
         if name not in h and anchor in h:
             i = h.index(anchor) + 1
@@ -369,7 +372,8 @@ def migration_requests(headers: list[str], sheet_id: int) -> list[dict]:
     place_after("Trudność", "Wiek (dni)")                                # Wiek, Trudność, Aktywna, Status
     place_after("Etapy", "Trudność")                                     # Etapy zaraz po Trudności
     place_after("Match", "Etapy")                                        # Match zaraz po Etapach
-    place_after("Aktywna", "Match")
+    place_after("Score", "Match")                                        # Score zaraz po Matchu
+    place_after("Aktywna", "Score")
     place_after("Widełki / forma", "Termin")                             # Termin, Widełki, Wymiar, AI, Kontakt
     if "Wymiar" not in h and "Widełki / forma" in h:                   # pusta kolumna zaraz za Widełkami
         i = h.index("Widełki / forma") + 1
@@ -411,7 +415,7 @@ def migrate(sh, cfg, today: str | None = None):
         sh.batch_update({"requests": stale + drop + reqs})   # widoki mają stare indeksy kolumn: wracają z init()
         row1 = ws.row_values(1)                            # insertDimension wstawia puste kolumny: nagłówki dopisujemy od razu
         for i, name in enumerate(HEADERS):
-            if name in ("Wiek (dni)", "Aktywna", "Poziom", "Trudność", "Etapy", "AI", "Powód", "Wymiar", "Proces rekrutacji") and name not in row1:
+            if name in ("Wiek (dni)", "Aktywna", "Poziom", "Trudność", "Etapy", "Score", "AI", "Powód", "Wymiar", "Proces rekrutacji") and name not in row1:
                 ws.update_cell(1, i + 1, name)
         print(f"Migracja: {len(reqs)} operacji na kolumnach, usunięto {len(stale)} widoków filtrów.")
     init(sh, cfg)                                       # idempotentne: walidacje, formaty, widoki, lustro (także po przerwanej migracji)
@@ -511,6 +515,49 @@ def recruitment_backfill(rows: list[list[str]], descriptions: dict[str, str]) ->
     return out
 
 
+def score_updates(rows: list[list[str]], cfg: dict) -> list[tuple[int, float | None, list[str]]]:
+    """Dla wszystkich wierszy z danymi: (numer wiersza, nowy Score albo None=pusty, rozbicie), tylko tam, gdzie komórka się zmienia.
+    Kara za firmę: liczba INNYCH wierszy tej samej firmy ze statusem Odrzucone / Ghosting."""
+    def firm(r):
+        return r[COL["Firma"]].strip().lower()
+    rejected: dict[str, int] = {}
+    for r in rows:
+        r = r + [""] * len(HEADERS)
+        if r[COL["Status"]].strip() in ("Odrzucone", "Ghosting") and firm(r):
+            rejected[firm(r)] = rejected.get(firm(r), 0) + 1
+    out = []
+    for n, r in enumerate(rows, start=2):
+        r = r + [""] * len(HEADERS)
+        if not (r[COL["Firma"]].strip() or r[COL["Stanowisko"]].strip()):
+            continue
+        status = r[COL["Status"]].strip()
+        own = 1 if status in ("Odrzucone", "Ghosting") else 0
+        value, why = score.compute({
+            "match": score.num(r[COL["Match"]]), "level": r[COL["Poziom"]].strip(), "difficulty": score.num(r[COL["Trudność"]]),
+            "stages": score.num(r[COL["Etapy"]]), "process": r[COL["Proces rekrutacji"]], "age": score.num(r[COL["Wiek (dni)"]]),
+            "active": r[COL["Aktywna"]].strip(), "status": status, "notes": r[COL["Notatki"]], "salary_text": r[COL["Widełki / forma"]],
+            "firm_rejections": rejected.get(firm(r), 0) - own}, cfg["score"])
+        current = score.num(r[COL["Score"]])
+        if (value is None) != (current is None) or (value is not None and abs(value - current) > 0.04):
+            out.append((n, value, why))
+    return out
+
+
+def refresh_scores(sh, ws, cfg: dict):
+    """Przelicza Score wszystkich wierszy (zależy od wieku, statusu i historii firmy, więc co run). Zapisuje tylko zmiany; rozbicie
+    wyniku ląduje w notatce komórki (najedź myszką), żeby nie zaśmiecać Notatek zmieniającą się codziennie treścią."""
+    rows = ws.get_all_values()[1:]
+    updates = score_updates(rows, cfg)
+    if updates:
+        col = col_letter(COL["Score"])
+        ws.batch_update([{"range": f"{col}{n}", "values": [[v if v is not None else ""]]} for n, v, _ in updates], value_input_option="RAW")
+        sh.batch_update({"requests": [
+            {"updateCells": {"range": {"sheetId": ws.id, "startRowIndex": n - 1, "endRowIndex": n, "startColumnIndex": COL["Score"], "endColumnIndex": COL["Score"] + 1},
+                             "rows": [{"values": [{"note": f"Score {v:.1f}: " + ", ".join(why) if v is not None else ""}]}], "fields": "note"}}
+            for n, v, why in updates]})
+    print(f"Score: zaktualizowano {len(updates)} z {len(rows)} wierszy.")
+
+
 def age_backfill(rows: list[list[str]], sep: str) -> list[tuple[int, str, str | None]]:
     """Dla wierszy Ofert z danymi: (numer wiersza, formuła Wieku albo None, "Tak" albo None) tylko dla pustych komórek."""
     out = []
@@ -570,6 +617,7 @@ def backfill_columns(sh, cfg, ws, locale: str = "en_US"):
     links = link_backfill(ws.get(f"{link_col}2:{link_col}", value_render_option="FORMULA"), arg_separator(locale))
     if links:
         ws.batch_update([{"range": f"{link_col}{n}", "values": [[f]]} for n, f in links], value_input_option="USER_ENTERED")
+    refresh_scores(sh, ws, cfg)
     print("Link: zamieniono na hiperłącza", len(links), "komórek.")
     print("Wiek / Aktywna: uzupełniono", len(ages), "wierszy.")
     from collections import Counter
@@ -685,6 +733,8 @@ def init(sh, cfg, skills_csv="skills.csv"):
                         "cell": {"userEnteredFormat": {"numberFormat": {"type": "NUMBER", "pattern": "0"}}}, "fields": "userEnteredFormat.numberFormat"}},
         {"repeatCell": {"range": {"sheetId": sid, "startRowIndex": 1, "startColumnIndex": COL["Etapy"], "endColumnIndex": COL["Etapy"] + 1},
                         "cell": {"userEnteredFormat": {"numberFormat": {"type": "NUMBER", "pattern": "0"}}}, "fields": "userEnteredFormat.numberFormat"}},
+        {"repeatCell": {"range": {"sheetId": sid, "startRowIndex": 1, "startColumnIndex": COL["Score"], "endColumnIndex": COL["Score"] + 1},
+                        "cell": {"userEnteredFormat": {"numberFormat": {"type": "NUMBER", "pattern": "0.0"}}}, "fields": "userEnteredFormat.numberFormat"}},
         {"updateDimensionProperties": {"range": {"sheetId": sid, "dimension": "COLUMNS", "startIndex": COL["Klucz"], "endIndex": COL["Klucz"] + 1},
                                        "properties": {"hiddenByUser": True}, "fields": "hiddenByUser"}},
     ]})

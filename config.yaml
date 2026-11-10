@@ -131,3 +131,23 @@ notify:
 
 # przeliczanie walut na PLN (orientacyjnie, do filtra widełek)
 fx_to_pln: {PLN: 1, EUR: 4.3, USD: 4.0, GBP: 5.0, CHF: 4.5}
+
+# szansa na zatrudnienie 0.0-10.0 (kolumna Score, moduł score.py): średnia ważona składników 0-1, przeliczana przy każdym runie
+# dla wszystkich wierszy (wiek rośnie z dnia na dzień). Rozbicie wyniku jest w notatce na komórce Score (najedź myszką).
+# Bez Match (brak opisu) Score zostaje pusty; przy "Mało danych do ATS" match jest ściągany ku neutralnemu 0.5.
+score:
+  weights: {match: 0.35, level: 0.10, difficulty: 0.15, process: 0.15, age: 0.15, fresh: 0.05, salary: 0.05}
+  level_fit: {"Mid": 1.0, "Senior": 0.8, "Senior+": 0.4, "?": 0.7}
+  stages_fit: {1: 1.0, 2: 0.9, 3: 0.75, 4: 0.55, 5: 0.4, 6: 0.25}       # 6 i więcej = ostatnia wartość
+  process_penalty: {"live coding": 0.15, "zadanie domowe": 0.1, "system design": 0.1}   # odejmowane od oceny procesu
+  unknown_fit: 0.7                                                       # etapy / wiek / widełki nieznane
+  age_fit: [[7, 1.0], [14, 0.9], [30, 0.7], [60, 0.45], [90, 0.25]]     # [do ilu dni, ocena]; starsze 0.1
+  fresh_refresh_penalty: [[5, 0.2], [15, 0.4]]                           # od ilu odświeżeń odejmujemy tyle z oceny świeżości
+  fresh_portals_penalty: 0.1                                             # oferta na 3+ portalach
+  salary_high_pln: 30000                                                 # widełki "do" od tej kwoty = większa konkurencja
+  salary_high_fit: 0.5
+  low_data_pull: 0.5
+  status_bonus: {"Odpowiedź": 1.0, "Rozmowa": 1.5, "Zadanie domowe": 1.5}   # punkty dodawane do wyniku
+  firm_penalty: 1.5                                                      # za każde wcześniejsze "Odrzucone" / "Ghosting" w tej samej firmie
+  firm_penalty_cap: 3.0
+  floor: 1.0                                                             # najniższy wynik oferty, która jeszcze żyje; 0.0 tylko dla zamkniętych

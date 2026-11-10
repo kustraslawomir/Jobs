@@ -135,6 +135,7 @@ def add_manual(cfg, cv_text: str, url: str | None, text: str | None):
     written = sheets.append_offers(ws, [o], today, last_row, sheets.arg_separator(sheets.sheet_locale(sh)))
     sheets.write_seen(sh, cfg, history)
     sheets.append_descriptions(sh, cfg, [(o.key, norm_description(o.description))])
+    sheets.refresh_scores(sh, ws, cfg)
     print(f"Dodano ręcznie: {o.company} – {o.title} | match {'–' if o.match is None else f'{o.match:.0%}'} | "
           f"poziom {o.level} | AI {o.ai or '-'} | wymiar {o.workload or '-'} | notatki: {o.note or '-'}")
     print(f"Wiersz {last_row + 1}, link: {o.url or '(brak)'}; zapisano: {len(written)}")
@@ -288,6 +289,7 @@ def main():
             ws.batch_update(updates, value_input_option="RAW")
         sheets.write_seen(sh, cfg, history)
         sheets.sort_offers(sh, ws)
+        sheets.refresh_scores(sh, ws, cfg)
         ws.insert_note("A1", f"Ostatnia aktualizacja: {stamp}")     # notatka na nagłówku: bez zajmowania miejsca
         gone = sum(1 for s in summaries.values() if s.disappeared)
         print(f"Historia: {len(history.by_key)} wpisów, zaktualizowano {len(updates)} komórek (Aktywna / Notatki), "
