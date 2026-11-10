@@ -173,6 +173,8 @@ def mirror_format_requests(sid: int, offers_index: int | None = None) -> list[di
                         "fields": "userEnteredFormat.numberFormat"}},
         {"repeatCell": {"range": {"sheetId": sid, "startRowIndex": 1, "startColumnIndex": COL["Match"], "endColumnIndex": COL["Match"] + 1},
                         "cell": {"userEnteredFormat": {"numberFormat": {"type": "PERCENT", "pattern": "0%"}}},
+                        "fields": "userEnteredFormat.numberFormat"}},        {"repeatCell": {"range": {"sheetId": sid, "startRowIndex": 1, "startColumnIndex": COL["Etapy"], "endColumnIndex": COL["Etapy"] + 1},
+                        "cell": {"userEnteredFormat": {"numberFormat": {"type": "NUMBER", "pattern": "0"}}},
                         "fields": "userEnteredFormat.numberFormat"}},
     ]
 
@@ -680,6 +682,8 @@ def init(sh, cfg, skills_csv="skills.csv"):
         {"repeatCell": {"range": {"sheetId": sid, "startRowIndex": 1, "startColumnIndex": COL["Match"], "endColumnIndex": COL["Match"] + 1},
                         "cell": {"userEnteredFormat": {"numberFormat": {"type": "PERCENT", "pattern": "0%"}}}, "fields": "userEnteredFormat.numberFormat"}},
         {"repeatCell": {"range": {"sheetId": sid, "startRowIndex": 1, "startColumnIndex": COL["Wiek (dni)"], "endColumnIndex": COL["Wiek (dni)"] + 1},
+                        "cell": {"userEnteredFormat": {"numberFormat": {"type": "NUMBER", "pattern": "0"}}}, "fields": "userEnteredFormat.numberFormat"}},
+        {"repeatCell": {"range": {"sheetId": sid, "startRowIndex": 1, "startColumnIndex": COL["Etapy"], "endColumnIndex": COL["Etapy"] + 1},
                         "cell": {"userEnteredFormat": {"numberFormat": {"type": "NUMBER", "pattern": "0"}}}, "fields": "userEnteredFormat.numberFormat"}},
         {"updateDimensionProperties": {"range": {"sheetId": sid, "dimension": "COLUMNS", "startIndex": COL["Klucz"], "endIndex": COL["Klucz"] + 1},
                                        "properties": {"hiddenByUser": True}, "fields": "hiddenByUser"}},
