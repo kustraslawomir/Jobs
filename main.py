@@ -10,6 +10,7 @@ import datetime as dt
 import os
 import re
 import sys
+from zoneinfo import ZoneInfo
 import requests
 import yaml
 
@@ -218,12 +219,13 @@ def main():
     new, stats, errors, events, runs, unknown = [], {}, [], [], [], set()
     returned = {}                                    # źródło -> klucze z UDANEGO runu (do wykrywania zniknięć)
     today = dt.date.today().isoformat()
+    stamp = dt.datetime.now(ZoneInfo("Europe/Warsaw")).strftime("%Y-%m-%d %H:%M")   # kiedy dokładnie był run (zakładka Źródła)
     for name in active_sources(cfg, args.runner):
         try:
             offers = REGISTRY[name](session)
         except Exception as e:                       # jedno źródło padło -> reszta działa
             errors.append(f"{name}: {e}")
-            runs.append((name, today, 0, 0, str(e)[:300]))
+            runs.append((name, stamp, 0, 0, str(e)[:300]))
             continue
         st = stats.setdefault(name, {"pobrane": len(offers), "nowe": 0})
         if not is_failed(len(offers), ""):
@@ -265,7 +267,7 @@ def main():
             dd.add(o)
             new.append(o)
             st["nowe"] += 1
-        runs.append((name, today, len(offers), st["nowe"], ""))
+        runs.append((name, stamp, len(offers), st["nowe"], ""))
 
     if args.dry_run:
         for o in new:
@@ -298,9 +300,9 @@ def main():
         for value, source in sorted(unknown):
             print(f"nieznana forma: {value} ({source})")
         print("Źródła (tak wyglądałby zapis do zakładki):")
-        print(f"  {'źródło':<14} {'data':<11} {'pobrane':>7} {'nowe':>5}  błąd")
+        print(f"  {'źródło':<14} {'data':<16} {'pobrane':>7} {'nowe':>5}  błąd")
         for name, day, fetched, n_new, error in runs:
-            print(f"  {name:<14} {day:<11} {fetched:>7} {n_new:>5}  {error}")
+            print(f"  {name:<14} {day:<16} {fetched:>7} {n_new:>5}  {error}")
     if args.dry_run:
         sure = [e for e in events if e[0] == "DUP"]
         only_content = sum(1 for e in sure if e[2] == SURE_BY_CONTENT)
