@@ -285,6 +285,7 @@ def main():
             ws.batch_update(updates, value_input_option="RAW")
         sheets.write_seen(sh, cfg, history)
         sheets.sort_offers(sh, ws)
+        ws.insert_note("A1", f"Ostatnia aktualizacja: {stamp}")     # notatka na nagłówku: bez zajmowania miejsca
         gone = sum(1 for s in summaries.values() if s.disappeared)
         print(f"Historia: {len(history.by_key)} wpisów, zaktualizowano {len(updates)} komórek (Aktywna / Notatki), "
               f"zniknęło ofert: {gone}")
